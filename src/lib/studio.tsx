@@ -66,6 +66,8 @@ type Job = {
   progress: number;
   steps: readonly string[];
   hold?: boolean;
+  kind: "create" | "edit" | "remix";
+  parentSlug?: string;
 };
 
 type StudioValue = {
@@ -74,6 +76,7 @@ type StudioValue = {
   spotlightOpen: boolean;
   session: SpotlightSession;
   job: Job | null;
+  cancelJob: () => void;
   openCreate: () => void;
   openEdit: (slug: string) => void;
   closeSpotlight: () => void;
@@ -146,6 +149,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const workspaceRef = useRef<string | null>(null);
   const skipPush = useRef(true);
   const applyingRemote = useRef(false);
+  const cancelledBuilds = useRef(new Set<string>());
   const syncConfigured = isCloudConfigured();
 
   libraryRef.current = library;
@@ -360,6 +364,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           return;
         }
         if (data.state === "ready" && data.source) {
+          if (cancelledBuilds.current.has(slug)) return;
           const source = data.source;
           const next = builtin
             ? touchLibrary(libraryRef.current, {
@@ -406,8 +411,15 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     return [...builtins.map((item) => item.slug), ...userStudies.map((item) => item.slug), job?.slug ?? ""];
   }, [job?.slug, userStudies]);
 
-  const startJob = useCallback((record: { slug: string; title: string; category: string; prompt: string }, steps: readonly string[], hold = false) => {
-    setJob({ ...record, step: 0, progress: 8, steps, hold });
+  const startJob = useCallback((
+    record: { slug: string; title: string; category: string; prompt: string },
+    steps: readonly string[],
+    hold = false,
+    kind: Job["kind"] = "create",
+    parentSlug?: string,
+  ) => {
+    cancelledBuilds.current.delete(record.slug);
+    setJob({ ...record, step: 0, progress: 8, steps, hold, kind, parentSlug });
   }, []);
 
   const parentCode = useCallback(
@@ -423,6 +435,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   const launchGenerate = useCallback(
     (slug: string, body: { kind: "create" | "edit" | "remix"; title: string; prompt: string; parentSource?: string }, builtin: boolean) => {
+      cancelledBuilds.current.delete(slug);
       void fetch("/api/study", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -432,6 +445,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           const data = await readStudyResponse(response);
           if (!response.ok) throw new Error(data.error || "Could not start the Cursor agent.");
           if (!data.agentId || !data.runId) throw new Error("Cursor did not return a run.");
+          if (cancelledBuilds.current.has(slug)) {
+            void fetch(`/api/study?agentId=${encodeURIComponent(data.agentId)}&runId=${encodeURIComponent(data.runId)}`, { method: "DELETE" });
+            return;
+          }
           if (builtin) {
             commitLibrary((current) => ({
               builtinBuilds: {
@@ -450,6 +467,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           }
         })
         .catch((error: unknown) => {
+          if (cancelledBuilds.current.has(slug)) return;
           const message = error instanceof Error ? error.message : "Could not start the Cursor agent.";
           if (builtin) {
             commitLibrary((current) => ({
@@ -536,7 +554,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           updatedAt: now,
         };
         commitLibrary((current) => ({ studies: [...current.studies, record] }));
-        startJob(record, generateConfigured ? BUILD_STEPS : FILE_STEPS, generateConfigured);
+        startJob(record, generateConfigured ? BUILD_STEPS : FILE_STEPS, generateConfigured, "create");
         if (generateConfigured) {
           launchGenerate(record.slug, { kind: "create", title: record.title, prompt: record.prompt }, false);
         }
@@ -561,7 +579,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
             ),
           }));
         }
-        startJob({ slug: source.slug, title: source.title, category: source.category, prompt }, generateConfigured ? BUILD_STEPS : EDIT_STEPS, generateConfigured);
+        startJob({ slug: source.slug, title: source.title, category: source.category, prompt }, generateConfigured ? BUILD_STEPS : EDIT_STEPS, generateConfigured, "edit");
         if (generateConfigured) {
           launchGenerate(
             source.slug,
@@ -587,7 +605,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       commitLibrary((library) => ({
         studies: library.studies.map((item) => (item.slug === next.slug ? next : item)),
       }));
-      startJob(next, generateConfigured ? BUILD_STEPS : REMIX_STEPS, generateConfigured);
+      startJob(next, generateConfigured ? BUILD_STEPS : REMIX_STEPS, generateConfigured, "remix", current.remixOf);
       if (generateConfigured) {
         launchGenerate(
           next.slug,
@@ -703,6 +721,55 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     deleteStudy(slug);
   }, [deletePrompt, deleteStudy]);
 
+  const cancelJob = useCallback(() => {
+    const current = job;
+    if (!current?.hold || current.progress >= 100) return;
+    const slug = current.slug;
+    cancelledBuilds.current.add(slug);
+
+    const user = libraryRef.current.studies.find((item) => item.slug === slug);
+    const build = libraryRef.current.builtinBuilds[slug];
+    const agentId = user?.agentId ?? build?.agentId;
+    const runId = user?.runId ?? build?.runId;
+    if (agentId && runId) {
+      void fetch(`/api/study?agentId=${encodeURIComponent(agentId)}&runId=${encodeURIComponent(runId)}`, { method: "DELETE" });
+    }
+
+    if (current.kind === "create" || current.kind === "remix") {
+      commitLibrary((library) => ({ studies: library.studies.filter((item) => item.slug !== slug) }));
+      const path = location.pathname.replace(/^\//, "");
+      if (path === slug) navigate(`/${current.parentSlug || fallbackSlug(slug)}`);
+    } else if (builtinBySlug(slug)) {
+      commitLibrary((library) => {
+        const notes = (library.builtinEdits[slug] ?? []).slice(0, -1);
+        const builtinEdits = { ...library.builtinEdits };
+        if (notes.length) builtinEdits[slug] = notes;
+        else delete builtinEdits[slug];
+        const builtinBuilds = { ...library.builtinBuilds };
+        if (builtinBuilds[slug]) builtinBuilds[slug] = { source: builtinBuilds[slug].source };
+        return { builtinEdits, builtinBuilds };
+      });
+    } else {
+      commitLibrary((library) => ({
+        studies: library.studies.map((item) => {
+          if (item.slug !== slug) return item;
+          const directions = item.directions.slice(0, -1);
+          return {
+            ...item,
+            directions,
+            prompt: composePrompt(item.basePrompt, directions),
+            agentId: undefined,
+            runId: undefined,
+            buildError: undefined,
+            updatedAt: Date.now(),
+          };
+        }),
+      }));
+    }
+
+    setJob(null);
+  }, [commitLibrary, fallbackSlug, job, location.pathname, navigate]);
+
   const value = useMemo<StudioValue>(
     () => ({
       items,
@@ -710,6 +777,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       spotlightOpen,
       session,
       job,
+      cancelJob,
       openCreate,
       openEdit,
       closeSpotlight,
@@ -728,6 +796,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       builtinBuilds: library.builtinBuilds,
     }),
     [
+      cancelJob,
       closeDelete,
       closeSpotlight,
       confirmDelete,

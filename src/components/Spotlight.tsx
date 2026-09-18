@@ -46,16 +46,12 @@ function SpotlightForm({
   const action = session.kind === "remix" ? "Remix" : session.kind === "edit" ? "Edit" : generateConfigured ? "Build" : "File";
   const hint =
     session.kind === "remix"
-      ? generateConfigured
-        ? "Original stays. Cursor builds a new live study."
-        : "Original stays. Keep this design language unless you ask otherwise."
+      ? "Enter to remix · Shift+Enter for a new line"
       : session.kind === "edit"
-        ? generateConfigured
-          ? "Cursor rewrites this study in place."
-          : "Saves a direction. The live widget changes when rebuilt in Cursor."
+        ? "Enter to edit · Shift+Enter for a new line"
         : generateConfigured
-          ? "Cursor builds a live study on this device."
-          : "Files a brief. Add CURSOR_API_KEY on the server to build.";
+          ? "Enter to build · Shift+Enter for a new line"
+          : "Enter to file · Shift+Enter for a new line";
 
   const submit = () => {
     if (value.trim()) onSubmit(value);
@@ -90,14 +86,14 @@ function SpotlightForm({
         autoComplete="off"
         autoCorrect="on"
         autoCapitalize="sentences"
-        enterKeyHint="enter"
+        enterKeyHint="send"
         inputMode="text"
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) {
-            event.preventDefault();
-            submit();
-          }
+          if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+          if (event.shiftKey) return;
+          event.preventDefault();
+          submit();
         }}
         placeholder={placeholder}
         className={`block min-h-[3.25rem] w-full resize-none overflow-x-hidden overflow-y-auto border-0 bg-transparent px-5 text-[17px] leading-relaxed tracking-tight break-words whitespace-pre-wrap text-zinc-900 outline-none placeholder:text-zinc-400 ${

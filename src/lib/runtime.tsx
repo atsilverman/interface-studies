@@ -27,7 +27,7 @@ import {
 import { StageCard } from "../components/StageCard";
 import { StageMorph } from "../components/StageMorph";
 import { useStageDock } from "./stage-dock";
-import { springs, card, breakpoints, nestedRadius } from "./tokens";
+import { springs, card, breakpoints, nestedRadius, tilt } from "./tokens";
 import { useViewport } from "./viewport";
 
 const LucideIcons = {
@@ -66,7 +66,7 @@ const modules: Record<string, unknown> = {
   "lucide-react": Lucide,
   "../components/StageCard": { StageCard },
   "../components/StageMorph": { StageMorph },
-  "../lib/tokens": { springs, card, breakpoints, nestedRadius },
+  "../lib/tokens": { springs, card, breakpoints, nestedRadius, tilt },
   "../lib/stage-dock": { useStageDock },
   "../lib/viewport": { useViewport },
 };

@@ -15,13 +15,13 @@ Must:
 - Wrap the object in StageCard from "../components/StageCard".
 - Use zinc only, plus one accent if needed. Live / hit = emerald.
 - Type: Inter via Tailwind font-sans, IBM Plex Serif is chrome-only, Geist Mono via font-mono for clocks/codes. Weight 400 default, 500 on titles/names.
-- Motion: import { springs } from "../lib/tokens" (snappy, soft, stamp). Linear loops only for meters/clocks/live blink.
+- Motion: import { springs } from "../lib/tokens" (snappy, soft, stamp). Linear loops only for meters/clocks/live blink. StageCard already applies a 3D pointer/touch tilt on desktop and mobile. Do not add your own rotateX/rotateY/perspective/glare.
 - Desktop AND mobile in one component. const compact = useViewport().layout === "mobile". Rearrange with StageMorph (stable id) — do not remount two copies, no CSS-rotate landscape.
 - Play / pause / reset only via useStageDock({ playing, onToggle, onReset }) from "../lib/stage-dock" if the study is time-based. Never put transport inside StageCard. The hook returns { playing, progress } with progress from 0 to 1. Keep match clocks in the study. Do not destructure other fields.
 - Dummy data local. Original physical metaphor or small tool — not a product page.
 
 StageCard props: title, meta?, badge?, badgeTone?: "default"|"live"|"hit", footer?, wide?, children.
-Inner well padding: px-5 pt-4 pb-4 (px-4 on compact). StageCard already draws the 28px zinc shell and concentric white well (inner radius = outer − inset). If you nest another rounded rectangle inside a rounded parent with a uniform gutter, import nestedRadius from "../lib/tokens" and use inner = outer − inset. Do not pick rounded-2xl by habit. Pills stay rounded-full.
+Inner well padding: px-5 pt-4 pb-4 (px-4 on compact). StageCard already draws the 28px zinc shell, concentric white well (inner radius = outer − inset), and the 3D tilt. If you nest another rounded rectangle inside a rounded parent with a uniform gutter, import nestedRadius from "../lib/tokens" and use inner = outer − inset. Do not pick rounded-2xl by habit. Pills stay rounded-full.
 
 Allowed imports only:
 - react
@@ -333,6 +333,25 @@ export async function handleStudy(req: IncomingMessage, res: ServerResponse) {
       return;
     }
     send(res, 200, result);
+    return;
+  }
+
+  if (method === "DELETE") {
+    if (!isCursorConfigured()) {
+      send(res, 501, { error: "CURSOR_API_KEY is not set on the server." });
+      return;
+    }
+    const agentId = url.searchParams.get("agentId")?.trim() ?? "";
+    const runId = url.searchParams.get("runId")?.trim() ?? "";
+    if (!agentId) {
+      send(res, 400, { error: "agentId is required." });
+      return;
+    }
+    if (runId) {
+      await cursorFetch(`/agents/${encodeURIComponent(agentId)}/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" });
+    }
+    await cursorFetch(`/agents/${encodeURIComponent(agentId)}`, { method: "DELETE" });
+    send(res, 200, { ok: true });
     return;
   }
 

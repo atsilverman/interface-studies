@@ -12,7 +12,7 @@ React + TypeScript + Tailwind CSS v4 + Motion (`motion/react`). Playground chrom
 
 - Page: `bg-zinc-100` `#f4f4f5`. Stage: white `rounded-xl`.
 - Widget: `StageCard`. Default `w-[440px]`. Agent / data tools may use `wide` (`w-[560px]`). On the mobile layout, the card is `w-full` up to 400px.
-- Card: `card.radius` 28px, `bg-zinc-100 shadow-heavy`. Inner well: white, inset `card.inset` 10px (8px compact).
+- Card: `card.radius` 28px, `bg-zinc-100 shadow-heavy`. Inner well: white, inset `card.inset` 10px (8px compact). `StageCard` also owns the site-wide 3D tilt — every study gets it.
 - Nested rounds are **concentric**: `nestedRadius(outer, inset)` → `max(0, outer − inset)`. The white well is 18px (20px compact), not `rounded-2xl` / 16px. A too-small inner radius makes the grey gutter thicker at the corner than along the edges. `StageCard` already applies this. If a study nests another rounded rectangle inside a rounded parent with a uniform gutter, use the same formula — do not pick `rounded-xl` / `rounded-2xl` by habit. Pills (`rounded-full`) are exempt.
 - Header: 15px medium title, 12.5px `text-zinc-400` meta, 10px pill badge.
 - Footer: 11px `text-zinc-400`, one quiet line.
@@ -52,6 +52,7 @@ Import `springs` from `src/lib/tokens.ts`.
 - `springs.soft` — bars, layout, traveling marks, desktop ↔ mobile morph.
 - `springs.stamp` — threshold / unlock.
 - Linear loops only for meters, clocks, live blink.
+- Every study lives in `StageCard`, which already applies a pointer / touch **3D tilt** (desktop hover and mobile press-drag) with `springs.soft` and a quiet sheen. Do not add a second `rotateX` / `rotateY` / `perspective` on the study. Honor `prefers-reduced-motion` by leaving the card flat — `StageCard` already does this.
 - No bounce-cartoon, no large layout jumps, no default 300ms ease everywhere.
 - Desktop ↔ mobile is a **morph**, not a cut or a fade of the whole card. Keep one tree. `StageCard` already layout-animates. Pieces that change place (player vs clock, row vs stack) wrap in `StageMorph` with a stable `id` (`layoutId`). Do not remount the study on toggle.
 
@@ -80,8 +81,8 @@ Ask: *Would this control exist if the widget were live in a product, not being d
 
 - Sidebar title **Interface Studies**. Subtitle: a playground for original interface design.
 - `/` restores the last user study on this device, or the newest in the cloud library, otherwise Defcon. Only original studies in the nav.
-- Runtime overlay cycles filing statuses (`FILE_STEPS` / `EDIT_STEPS` / `REMIX_STEPS` in `catalog.ts`) with a progress bar. When a Cursor build is ready it stamps **Live** and the page reloads so the new study is unmistakable.
-- Prompt, remix, edit, and delete sheets sit at the **top of the visual viewport** so the field is on screen without scrolling — including when the keyboard is open. Do not pin them to the bottom on a phone.
+- Runtime overlay cycles filing statuses (`FILE_STEPS` / `EDIT_STEPS` / `REMIX_STEPS` in `catalog.ts`) with a progress bar. When a Cursor build is ready it stamps **Live** and the page reloads so the new study is unmistakable. While it is still building, **Cancel** on the overlay stops the agent and reverts the brief.
+- Prompt, remix, edit, and delete sheets sit at the **top of the visual viewport** so the field is on screen without scrolling — including when the keyboard is open. Do not pin them to the bottom on a phone. **Enter** submits; **Shift+Enter** inserts a new line. The sheet button still works.
 - Stage playback sits top-right of the stage when a study registers. Hidden otherwise. Same `size-9` hit targets. Lucide `Play` / `Pause` / `RotateCcw`. Hover: play emerald, pause amber, reset red. Reset while playing restarts the clock and keeps running. On a phone the same controls are a left floating cluster (`size-11`, zinc-100/blur ring, `shadow-heavy`).
 - Library cloud save lives on the **stage**, top left, on desktop. On a phone it sits in the header top-right (where play / reset used to be) — cloud icon, spinning loader while saving, brief emerald splash when the write lands. Status only; not a control. Do not bounce an unknown slug to `/defcon` until the cloud library has loaded — keep the URL.
 - Stage layout: auto / desktop / mobile on **wide** screens. Monitor and phone icons on the stage toggle, **bottom right** of the stage. On a narrow screen the toggle is omitted and the study always uses the mobile composition. + is a floating zinc-900 disc, bottom-right of the stage, with a zinc-100/blur ring and `shadow-heavy`. The study is **centered** in the remaining well, with padding so it never sits under the floating clusters. The page is `h-dvh` and does not scroll; the stage well does if the card is taller. Click the active explicit mode again to return to auto.

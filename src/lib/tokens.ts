@@ -24,6 +24,12 @@ export const card = {
   insetCompact: 8,
 };
 
+/** Pointer / touch 3D tilt on StageCard. Desktop and mobile. */
+export const tilt = {
+  max: 10,
+  perspective: 1100,
+};
+
 /**
  * Concentric nested corners: the inner radius must shrink by the gutter
  * so the band between two rounds stays even (r_inner = r_outer − inset).
