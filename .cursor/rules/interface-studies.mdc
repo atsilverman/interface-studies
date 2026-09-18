@@ -21,7 +21,7 @@ This repo is a prompt-first gallery of **original** interactive UI studies. Matc
 
 Playground controls are not the component. If a control would not exist when the widget is live in a product, put it on the playback chrome.
 
-- **Chrome:** play / pause / reset top-right of the stage. On a phone: left floating cluster, matching + on the right. Desktop / mobile toggle bottom-right of the stage on wide screens only. Same size for play / reset / toggle on desktop; `size-11` FABs on a phone. No speed chips.
+- **Chrome:** play / pause / reset top-right of the stage. On a phone: left floating cluster, matching pencil on the right (Edit). **+** is in the library rail / hamburger panel. Desktop / mobile toggle bottom-right of the stage on wide screens only. Same size for play / reset / toggle on desktop; `size-11` FABs on a phone. No speed chips.
 - **Study:** the designed object, its clock/progress, live/hit state, and controls that *are* the interface.
 
 Play / reset are omitted when `useStageDock` is not called.

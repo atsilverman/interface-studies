@@ -3,7 +3,7 @@ import { BUILD_STEPS } from "../lib/catalog";
 import { useStudio } from "../lib/studio";
 import { springs } from "../lib/tokens";
 
-export function RuntimeStatus() {
+export function RuntimeStatus({ inline = false }: { inline?: boolean }) {
   const { job, cancelJob } = useStudio();
   const steps = job?.steps ?? BUILD_STEPS;
   const label = job ? steps[Math.min(job.step, steps.length - 1)] : "";
@@ -13,11 +13,15 @@ export function RuntimeStatus() {
     <AnimatePresence>
       {job ? (
         <motion.div
-          initial={{ opacity: 0, y: 12 }}
+          initial={{ opacity: 0, y: inline ? -6 : 12 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 8 }}
+          exit={{ opacity: 0, y: inline ? -4 : 8 }}
           transition={springs.snappy}
-          className="shadow-heavy absolute bottom-28 left-1/2 z-40 w-[min(420px,calc(100%-2rem))] -translate-x-1/2 rounded-2xl bg-white px-4 py-3 md:bottom-8"
+          className={
+            inline
+              ? "shadow-heavy mx-3 mb-2 shrink-0 rounded-2xl bg-white px-4 py-3"
+              : "shadow-heavy absolute bottom-8 left-1/2 z-40 w-[min(420px,calc(100%-2rem))] -translate-x-1/2 rounded-2xl bg-white px-4 py-3"
+          }
         >
           <div className="mb-2 flex items-center justify-between gap-3">
             <p className="min-w-0 truncate text-[13px] tracking-tight text-zinc-900">{job.title}</p>

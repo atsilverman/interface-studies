@@ -49,6 +49,11 @@ export function Generated({ source }: { source: string }) {
         <ErrorWell title={title} error={error} source={source} footer="This study threw while rendering." />
       )}
     >
+      <span
+        hidden
+        aria-hidden
+        className="aspect-[4/5] mt-4 mt-5 hidden h-1 h-1.5 w-7 w-8 w-9 w-10 pr-3 gap-3.5 gap-4 bg-zinc-50 bg-zinc-200 bg-emerald-500 bg-emerald-500/10"
+      />
       <Component />
     </StudyBoundary>
   );

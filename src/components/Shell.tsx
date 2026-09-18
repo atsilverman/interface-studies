@@ -1,6 +1,7 @@
-import { useLocation, Outlet } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useLocation, useParams, Outlet } from "react-router-dom";
+import { useEffect, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { Pencil } from "lucide-react";
 import { SITE } from "../lib/catalog";
 import { StageDockProvider } from "../lib/stage-dock";
 import { useStudio } from "../lib/studio";
@@ -15,7 +16,17 @@ import { StageCanvas } from "./StageCanvas";
 import { StageControls } from "./StageControls";
 import { StageModeToggle } from "./StageModeToggle";
 
-function PlusButton({ onClick, className = "" }: { onClick: () => void; className?: string }) {
+function DiscButton({
+  label,
+  onClick,
+  className = "",
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  className?: string;
+  children: ReactNode;
+}) {
   return (
     <button
       type="button"
@@ -26,20 +37,34 @@ function PlusButton({ onClick, className = "" }: { onClick: () => void; classNam
       }}
       onClick={onClick}
       className={`flex size-10 items-center justify-center rounded-full bg-zinc-900 text-white transition-colors hover:bg-zinc-800 ${className}`}
-      aria-label="New interface"
+      aria-label={label}
     >
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-        <path d="M7 1.5v11M1.5 7h11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-      </svg>
+      {children}
     </button>
   );
 }
 
+function PlusButton({ onClick, className = "" }: { onClick: () => void; className?: string }) {
+  return (
+    <DiscButton label="New interface" onClick={onClick} className={className}>
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <path d="M7 1.5v11M1.5 7h11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+    </DiscButton>
+  );
+}
+
 function ShellChrome() {
-  const { spotlightOpen, openCreate, closeSpotlight, deletePrompt } = useStudio();
+  const { spotlightOpen, openCreate, openEdit, closeSpotlight, deletePrompt } = useStudio();
+  const { slug } = useParams();
   const { narrow } = useViewport();
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
+
+  const openLibraryCreate = () => {
+    setMenuOpen(false);
+    openCreate();
+  };
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -86,7 +111,9 @@ function ShellChrome() {
           </div>
           <LibrarySync />
         </header>
-      ) : (
+      ) : null}
+      {narrow ? <RuntimeStatus inline /> : null}
+      {narrow ? null : (
         <aside className="flex flex-col px-8 pt-12 md:h-dvh md:w-3/12 md:min-w-[280px] md:overflow-y-auto">
           <h1 className="mb-2 font-serif text-3xl tracking-tighter text-zinc-900">{SITE.title}</h1>
           <p className="mb-12 max-w-[16.25rem] font-serif text-base tracking-tight text-zinc-600">{SITE.tagline}</p>
@@ -121,16 +148,18 @@ function ShellChrome() {
           ) : null}
           <div className="absolute right-3 bottom-3 z-20 flex items-end gap-2">
             {narrow ? null : <StageModeToggle />}
-            {narrow ? (
+            {narrow && slug ? (
               <div className="rounded-full bg-zinc-100/80 p-1.5 shadow-heavy backdrop-blur-md">
-                <PlusButton onClick={openCreate} className="size-11" />
+                <DiscButton label="Edit study" onClick={() => openEdit(slug)} className="size-11">
+                  <Pencil size={16} strokeWidth={1.6} aria-hidden="true" />
+                </DiscButton>
               </div>
             ) : null}
           </div>
           <StageCanvas>
             <Outlet />
           </StageCanvas>
-          <RuntimeStatus />
+          {narrow ? null : <RuntimeStatus />}
         </div>
       </main>
 
@@ -173,6 +202,9 @@ function ShellChrome() {
               </div>
               <div className="flex-1 overflow-y-auto">
                 <LibraryNav />
+              </div>
+              <div className="mt-6">
+                <PlusButton onClick={openLibraryCreate} />
               </div>
             </motion.div>
           </motion.div>
