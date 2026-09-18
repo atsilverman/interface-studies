@@ -37,9 +37,10 @@ function readSize() {
 }
 
 function resolveLayout(mode: StageMode, width: number): StageLayout {
+  if (width < breakpoints.narrow) return "mobile";
   if (mode === "desktop") return "desktop";
   if (mode === "mobile") return "mobile";
-  return width >= breakpoints.narrow ? "desktop" : "mobile";
+  return "desktop";
 }
 
 export function ViewportProvider({ children }: { children: ReactNode }) {

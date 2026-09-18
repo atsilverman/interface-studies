@@ -8,7 +8,7 @@ export function StageCanvas({ children }: { children: ReactNode }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
   const mobile = layout === "mobile";
-  const lockScale = mobile && narrow;
+  const phoneStage = mobile && narrow;
 
   useLayoutEffect(() => {
     const host = hostRef.current;
@@ -16,7 +16,7 @@ export function StageCanvas({ children }: { children: ReactNode }) {
     if (!host || !content) return;
 
     const measure = () => {
-      if (lockScale) {
+      if (phoneStage) {
         setScale(1);
         return;
       }
@@ -24,7 +24,7 @@ export function StageCanvas({ children }: { children: ReactNode }) {
       const height = host.clientHeight;
       const contentW = Math.max(content.scrollWidth, content.offsetWidth, mobile ? 400 : frameWidth);
       const contentH = Math.max(content.scrollHeight, content.offsetHeight);
-      const next = Math.min((width - 16) / contentW, (height - 16) / contentH, 1);
+      const next = Math.min((width - 24) / contentW, (height - 24) / contentH, 1);
       setScale(Number.isFinite(next) && next > 0 ? Math.max(0.34, next) : 1);
     };
 
@@ -33,26 +33,32 @@ export function StageCanvas({ children }: { children: ReactNode }) {
     observer.observe(content);
     measure();
     return () => observer.disconnect();
-  }, [frameWidth, lockScale, mobile]);
+  }, [frameWidth, mobile, phoneStage]);
 
   return (
     <div
       ref={hostRef}
-      className={`flex h-full min-h-0 w-full justify-center ${
-        mobile ? `overflow-auto ${narrow ? "items-start" : "items-center"}` : "items-center overflow-hidden"
-      }`}
+      className={
+        phoneStage
+          ? "h-full min-h-0 w-full overflow-auto"
+          : "flex h-full min-h-0 w-full items-center justify-center overflow-hidden"
+      }
     >
       <div
         className={
-          mobile ? "flex w-full max-w-[400px] flex-col items-center px-4 py-6" : "flex w-max flex-col items-center"
+          phoneStage
+            ? "flex min-h-full w-full items-center justify-center px-4 pt-6 pb-28"
+            : mobile
+              ? "flex w-full max-w-[400px] flex-col items-center px-4 py-6"
+              : "flex w-max flex-col items-center"
         }
-        style={{ zoom: lockScale ? 1 : scale }}
+        style={{ zoom: phoneStage ? 1 : scale }}
       >
         <LayoutGroup id="stage">
           <div
             ref={contentRef}
             className={`flex flex-col items-center [&_*:not(input):not(textarea):not(button)]:cursor-default ${
-              mobile ? "w-full" : "w-max"
+              mobile ? "w-full max-w-[400px]" : "w-max"
             }`}
           >
             {children}

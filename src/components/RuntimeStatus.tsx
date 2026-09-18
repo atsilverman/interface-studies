@@ -16,7 +16,7 @@ export function RuntimeStatus() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 8 }}
           transition={springs.snappy}
-          className="shadow-heavy pointer-events-none absolute bottom-8 left-1/2 z-40 w-[min(420px,calc(100%-2rem))] -translate-x-1/2 rounded-2xl bg-white px-4 py-3"
+          className="shadow-heavy pointer-events-none absolute bottom-28 left-1/2 z-40 w-[min(420px,calc(100%-2rem))] -translate-x-1/2 rounded-2xl bg-white px-4 py-3 md:bottom-8"
         >
           <div className="mb-2 flex items-center justify-between gap-3">
             <p className="text-[13px] tracking-tight text-zinc-900">{job.title}</p>
@@ -27,7 +27,7 @@ export function RuntimeStatus() {
                 animate={{ opacity: [1, 0.28, 1] }}
                 transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
               />
-              Running
+              {job.hold ? "Building" : "Filing"}
             </span>
           </div>
           <p className="mb-2 font-mono text-[11px] tracking-tight text-zinc-400">{label}</p>

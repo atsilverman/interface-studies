@@ -17,7 +17,9 @@ export function IconButton({ label, filled, hoverTone, className = "", children,
     <button
       type="button"
       aria-label={label}
-      className={`flex size-9 items-center justify-center rounded-full transition-colors ${
+      className={`flex items-center justify-center rounded-full transition-colors ${
+        className.includes("size-") ? "" : "size-9"
+      } ${
         filled ? "bg-zinc-900 text-white" : "text-zinc-500 ring-1 ring-zinc-200"
       } ${hoverTone ? hoverToneClass[hoverTone] : filled ? "hover:bg-zinc-800" : "hover:text-zinc-900"} ${className}`}
       {...props}

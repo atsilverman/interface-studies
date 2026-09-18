@@ -258,7 +258,7 @@ export function Defcon() {
         borderRadius: 28,
         boxShadow: cardShadow,
       }}
-      className="[&_.shadow-heavy]:shadow-none"
+      className={`${compact ? "w-full" : ""} [&_.shadow-heavy]:shadow-none`}
     >
     <StageCard
       wide
@@ -316,7 +316,9 @@ export function Defcon() {
                 {Math.floor(last.m)}' · {compact ? last.kind : KINDS[last.kind].label}
               </motion.span>
             ) : (
-              <span className="text-[11px] tracking-tight text-zinc-400">Waiting first action</span>
+              <span className="max-w-[9.5rem] text-right text-[11px] tracking-tight text-zinc-400">
+                Waiting first action
+              </span>
             )}
           </AnimatePresence>
         </div>

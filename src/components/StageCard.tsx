@@ -40,25 +40,29 @@ export function StageCard({
       animate={{ width: compact ? "100%" : wide ? 560 : 440 }}
       transition={springs.soft}
       style={{ borderRadius: 28 }}
-      className="shadow-heavy overflow-hidden bg-zinc-100"
+      className={`shadow-heavy overflow-hidden bg-zinc-100 ${compact ? "w-full max-w-full" : ""}`}
     >
-      <div className="flex items-center justify-between px-5 pt-4 pb-3">
-        <div className="flex items-baseline gap-2">
-          <h2 className="text-[15px] font-medium tracking-tight text-zinc-900">{heading}</h2>
-          {meta ? <span className="text-[12.5px] tracking-tight text-zinc-400">{meta}</span> : null}
+      <div className={`flex items-center justify-between ${compact ? "px-4 pt-3.5 pb-2.5" : "px-5 pt-4 pb-3"}`}>
+        <div className="flex min-w-0 items-baseline gap-2">
+          <h2 className="truncate text-[15px] font-medium tracking-tight text-zinc-900">{heading}</h2>
+          {meta ? <span className="shrink-0 text-[12.5px] tracking-tight text-zinc-400">{meta}</span> : null}
         </div>
         {badge ? (
           <span
-            className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium tracking-tight ${badgeTones[badgeTone]}`}
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium tracking-tight ${badgeTones[badgeTone]}`}
           >
             {badge}
           </span>
         ) : null}
       </div>
-      <div className="px-2.5 pb-2.5">
+      <div className={compact ? "px-2 pb-2" : "px-2.5 pb-2.5"}>
         <div className="rounded-2xl bg-white">{children}</div>
       </div>
-      {footer ? <p className="px-5 pb-3 text-center text-[11px] tracking-tight text-zinc-400">{footer}</p> : null}
+      {footer ? (
+        <p className={`text-center text-[11px] tracking-tight text-zinc-400 ${compact ? "px-4 pb-3" : "px-5 pb-3"}`}>
+          {footer}
+        </p>
+      ) : null}
     </motion.div>
   );
 }

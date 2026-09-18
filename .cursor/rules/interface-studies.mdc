@@ -21,18 +21,18 @@ This repo is a prompt-first gallery of **original** interactive UI studies. Matc
 
 Playground controls are not the component. If a control would not exist when the widget is live in a product, put it on the playback chrome.
 
-- **Chrome:** play / pause / reset top-right of the stage (header on a phone). Desktop / mobile toggle bottom-right of the stage. Same size. No speed chips.
+- **Chrome:** play / pause / reset top-right of the stage. On a phone: left floating cluster, matching + on the right. Desktop / mobile toggle bottom-right of the stage on wide screens only. Same size for play / reset / toggle on desktop; `size-11` FABs on a phone. No speed chips.
 - **Study:** the designed object, its clock/progress, live/hit state, and controls that *are* the interface.
 
 Play / reset are omitted when `useStageDock` is not called.
 
 ## Stage layout
 
-Desktop composition **scales to fit** when the stage is small. There is no CSS-rotate landscape mode. Auto: wide → desktop layout, narrow → mobile layout. The monitor / phone toggle is always offered. Do not restyle the system for mobile; rearrange only. Toggle morphs shared pieces with `StageMorph` / `layout` (`springs.soft`) — do not crossfade two copies of the study.
+Desktop composition **scales to fit** when the stage is small. There is no CSS-rotate landscape mode. Auto: wide → desktop layout, narrow → mobile layout. The monitor / phone toggle is offered on wide screens only. A phone always uses the mobile layout. Do not restyle the system for mobile; rearrange only. Toggle morphs shared pieces with `StageMorph` / `layout` (`springs.soft`) — do not crossfade two copies of the study.
 
 The public site does not ship LLM API keys. Keys in frontend env are public. Optional library cloud save uses the publishable Supabase anon key with RPC-by-workspace-id (`supabase/schema.sql`). Stage layout stays in localStorage.
 
-The + / ⌘K overlay only files a named stub and cycles fake runtime statuses. Do not treat that as compiling a Motion study.
+The + / ⌘K overlay files a named stub, then `/api/study` builds it when `CURSOR_API_KEY` is set on the server. Do not put that key in `VITE_*`.
 
 ## Remix and edit
 

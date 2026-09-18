@@ -54,7 +54,7 @@ Import `springs` from `src/lib/tokens.ts`.
 - No bounce-cartoon, no large layout jumps, no default 300ms ease everywhere.
 - Desktop ↔ mobile is a **morph**, not a cut or a fade of the whole card. Keep one tree. `StageCard` already layout-animates. Pieces that change place (player vs clock, row vs stack) wrap in `StageMorph` with a stable `id` (`layoutId`). Do not remount the study on toggle.
 
-Play / pause / reset sit top-right of the stage (`useStageDock` + `StageControls`). On a narrow screen they sit in the top bar. The desktop ↔ mobile toggle sits bottom-right of the stage. They are not part of the study object. In-object controls use `IconButton` only when they belong to the metaphor. No speed chips.
+Play / pause / reset sit top-right of the stage (`useStageDock` + `StageControls`). On a phone they sit as a left floating cluster (same zinc-100/blur ring as **+**). The desktop ↔ mobile toggle sits bottom-right of the stage on wide screens only. On a phone there is no layout toggle — always the mobile composition. **+** is a matching floating disc, bottom-right. They are not part of the study object. In-object controls use `IconButton` only when they belong to the metaphor. No speed chips.
 
 ## Stage dock vs the study
 
@@ -72,17 +72,17 @@ Ask: *Would this control exist if the widget were live in a product, not being d
 - Dummy data, self-contained. Time-based studies still animate in the card; transport lives on the dock.
 - Physical metaphor or a small tool — not a product page.
 - Built studies live under `src/interfaces/` and register in `src/lib/catalog.ts`.
-- The left-rail **+** / ⌘K overlay is for new briefs. It names and files a stub immediately; the real Motion study is still built in chat.
+- The left-rail **+** / ⌘K overlay is for new briefs. With `CURSOR_API_KEY` on the server it starts a Cursor agent and mounts the generated study. Without the key it only files a stub.
 - Row **⋯** : Edit (in place), Remix (clone then prompt), Copy (clone only — mounts the same builtin Component), Rename, Delete (type the study title to confirm).
 
 ## Studio chrome
 
 - Sidebar title **Interface Studies**. Subtitle: a playground for original interface design.
 - Default route `/defcon`. Only original studies in the nav.
-- Runtime overlay cycles high-level build statuses (`BUILD_STEPS` / `REMIX_STEPS` in `catalog.ts`) with a progress bar. Fake is fine.
-- Stage playback sits top-right of the stage when a study registers. Hidden otherwise. Same `size-9` hit targets. Lucide `Play` / `Pause` / `RotateCcw`. Hover: play emerald, pause amber, reset red. Reset while playing restarts the clock and keeps running.
-- Library cloud save lives on the **stage**, top left — cloud icon, spinning loader while saving, brief emerald splash when the write lands. Status only; not a control. Not in the left rail.
-- Stage layout: auto / desktop / mobile. Monitor and phone icons on the stage toggle, **bottom right** of the stage. On a narrow screen play / reset sit in the top bar (where + used to be). + becomes a floating zinc-900 disc, bottom right of the page, with a zinc-100/blur ring and `shadow-heavy`. Click the active explicit mode again to return to auto.
+- Runtime overlay cycles filing statuses (`FILE_STEPS` / `EDIT_STEPS` / `REMIX_STEPS` in `catalog.ts`) with a progress bar. It does not compile a study.
+- Stage playback sits top-right of the stage when a study registers. Hidden otherwise. Same `size-9` hit targets. Lucide `Play` / `Pause` / `RotateCcw`. Hover: play emerald, pause amber, reset red. Reset while playing restarts the clock and keeps running. On a phone the same controls are a left floating cluster (`size-11`, zinc-100/blur ring, `shadow-heavy`).
+- Library cloud save lives on the **stage**, top left, on desktop. On a phone it sits in the header top-right (where play / reset used to be) — cloud icon, spinning loader while saving, brief emerald splash when the write lands. Status only; not a control.
+- Stage layout: auto / desktop / mobile on **wide** screens. Monitor and phone icons on the stage toggle, **bottom right** of the stage. On a narrow screen the toggle is omitted and the study always uses the mobile composition. + is a floating zinc-900 disc, bottom-right of the stage, with a zinc-100/blur ring and `shadow-heavy`. The study is **centered** in the remaining well, with padding so it never sits under the floating clusters. The page is `h-dvh` and does not scroll; the stage well does if the card is taller. Click the active explicit mode again to return to auto.
 - Left rail library (copies, remixes, titles) can periodic-sync to free Supabase when `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set. Stage layout stays on this device. Last write wins. No realtime.
 
 ## Stage layout (desktop vs mobile)
@@ -91,19 +91,19 @@ Two presentations of the same study. Same zinc, type, springs, and `StageCard`. 
 
 **Desktop layout** is the designed composition at 440 / 560. If the stage is narrower than that, it **scales down** to fit. No CSS-rotate / “turn your phone” mode.
 
-**Mobile layout** is a rearranged composition for a narrow column: stack, larger tap targets, full-width card. Every study has both layouts in one component (`layout` + `StageMorph`). Auto: wide screens use desktop, narrow screens use mobile. The monitor / phone toggle is always available and overrides auto (including desktop-on-phone as a scaled wide card).
+**Mobile layout** is a rearranged composition for a narrow column: stack, larger tap targets, full-width card. Every study has both layouts in one component (`layout` + `StageMorph`). Auto: wide screens use desktop, narrow screens use mobile. The monitor / phone toggle is offered on wide screens only. A phone always shows the mobile layout.
 
 The monitor / phone toggle overrides auto. Persist in `localStorage`. Switching interpolates shared pieces (Keynote Magic Move): card width, clock, names, bar. Verify the morph in the browser, not only the settled layouts.
 
 ## Deployed site
 
-The public gallery does not call an LLM from the browser. Prompt overlay files local stubs; real studies are committed in this repo. **Do not store API secrets in the client**, `VITE_*` env, or localStorage. Those values are public. `CURSOR_API_KEY` stays server-only in gitignored `.env` and the host env UI. Supabase URL + anon key are publishable by design (RPC-by-workspace-id in `supabase/schema.sql`); they still live in env, not in `src/`.
+The public gallery does not put API secrets in the browser. `CURSOR_API_KEY` stays server-only in gitignored `.env` and Vercel env. `+` / remix / edit call `/api/study`, which starts a Cursor cloud agent and returns TSX. The client compiles that source and stores it in the library (and Supabase if configured). Do not prefix the key with `VITE_`.
 
 ## Remix and edit
 
 Copy and Remix clone a **new nav row** that mounts the same builtin Component (independent clock / state). Copy stops there. Remix then opens the prompt. The source stays in the rail either way. A + stub has no Component yet, so Copy of a stub stays a stub.
 
-A live HTML/Vite site can remount shipped components. It cannot write a new `src/interfaces/*.tsx` into the production bundle from the browser. Edit / Remix briefs that should change the UI still need an agent (Cursor chat today; `CURSOR_API_KEY` on a server later) to commit code.
+A live HTML/Vite site can remount shipped components and **runtime-compile** studies returned by `/api/study`. It still cannot write `src/interfaces/*.tsx` into the production git bundle from the browser. Built-ins stay in this repo; generated studies live in the library blob.
 
 Edit prompts on the same study. No new row. Built studies stay on this file until an agent rewrites them; the overlay still records the direction.
 

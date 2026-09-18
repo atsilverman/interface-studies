@@ -19,6 +19,11 @@ function PlusButton({ onClick, className = "" }: { onClick: () => void; classNam
   return (
     <button
       type="button"
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
+        onClick();
+      }}
       onClick={onClick}
       className={`flex size-10 items-center justify-center rounded-full bg-zinc-900 text-white transition-colors hover:bg-zinc-800 ${className}`}
       aria-label="New interface"
@@ -62,15 +67,15 @@ function ShellChrome() {
 
   return (
     <>
-    <div className="flex min-h-dvh flex-col overflow-x-hidden bg-zinc-100 font-sans md:h-dvh md:flex-row">
+    <div className="flex h-dvh flex-col overflow-hidden bg-zinc-100 font-sans md:flex-row">
       {narrow ? (
-        <header className="flex items-center gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
+        <header className="flex shrink-0 items-center gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2">
           <button
             type="button"
             aria-label="Open library"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen(true)}
-            className="flex size-10 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-200/80 hover:text-zinc-900"
+            className="flex size-9 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-200/80 hover:text-zinc-900"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path d="M2.5 4h11M2.5 8h11M2.5 12h11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -79,7 +84,7 @@ function ShellChrome() {
           <div className="min-w-0 flex-1">
             <h1 className="truncate font-serif text-xl tracking-tighter text-zinc-900">{SITE.title}</h1>
           </div>
-          <StageControls />
+          <LibrarySync />
         </header>
       ) : (
         <aside className="flex flex-col px-8 pt-12 md:h-dvh md:w-3/12 md:min-w-[280px] md:overflow-y-auto">
@@ -94,27 +99,33 @@ function ShellChrome() {
         </aside>
       )}
 
-      <main
-        className={`relative flex min-h-0 flex-1 flex-col p-3 md:h-dvh md:w-9/12 md:p-4 ${
-          narrow ? "pb-[max(5.5rem,calc(env(safe-area-inset-bottom)+4.25rem))]" : "pb-[max(0.75rem,env(safe-area-inset-bottom))]"
-        }`}
-      >
+      <main className="relative flex min-h-0 flex-1 flex-col p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:h-dvh md:w-9/12 md:p-4">
         <div
           data-stage
-          className={`relative flex w-full flex-1 flex-col rounded-xl bg-white md:h-full md:min-h-0 ${
-            narrow ? "min-h-0" : "min-h-[70dvh]"
-          }`}
+          className="relative flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden rounded-xl bg-white"
         >
-          <div className="absolute top-3 left-3 z-20">
-            <LibrarySync />
-          </div>
+          {narrow ? null : (
+            <div className="absolute top-3 left-3 z-20">
+              <LibrarySync />
+            </div>
+          )}
           {narrow ? null : (
             <div className="absolute top-3 right-3 z-20">
               <StageControls />
             </div>
           )}
-          <div className="absolute right-3 bottom-3 z-20">
-            <StageModeToggle className={narrow ? "bg-zinc-200/80" : undefined} />
+          {narrow ? (
+            <div className="absolute bottom-3 left-3 z-20">
+              <StageControls framed />
+            </div>
+          ) : null}
+          <div className="absolute right-3 bottom-3 z-20 flex items-end gap-2">
+            {narrow ? null : <StageModeToggle />}
+            {narrow ? (
+              <div className="rounded-full bg-zinc-100/80 p-1.5 shadow-heavy backdrop-blur-md">
+                <PlusButton onClick={openCreate} className="size-11" />
+              </div>
+            ) : null}
           </div>
           <StageCanvas>
             <Outlet />
@@ -167,14 +178,6 @@ function ShellChrome() {
           </motion.div>
         ) : null}
       </AnimatePresence>
-
-      {narrow ? (
-        <div className="pointer-events-none fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40">
-          <div className="pointer-events-auto rounded-full bg-zinc-100/80 p-1.5 shadow-heavy backdrop-blur-md">
-            <PlusButton onClick={openCreate} className="size-12" />
-          </div>
-        </div>
-      ) : null}
 
       <Spotlight />
       <DeleteConfirm />

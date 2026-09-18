@@ -117,7 +117,9 @@ export function StudyRow({ item }: StudyRowProps) {
           event.preventDefault();
           event.stopPropagation();
           const rect = event.currentTarget.getBoundingClientRect();
-          setMenu(menu ? null : { top: rect.bottom + 6, left: Math.max(12, rect.right - 168) });
+          const width = 160;
+          const left = Math.min(Math.max(12, rect.right - width), window.innerWidth - width - 12);
+          setMenu(menu ? null : { top: rect.bottom + 6, left });
         }}
         className={`flex size-7 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-200/80 hover:text-zinc-900 ${
           menu ? "bg-zinc-200/80 text-zinc-900" : ""

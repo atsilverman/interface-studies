@@ -31,8 +31,19 @@ export type UserStudy = {
   remixOfTitle?: string;
   cloneOf?: string;
   copied?: boolean;
+  source?: string;
+  agentId?: string;
+  runId?: string;
+  buildError?: string;
   createdAt: number;
   updatedAt: number;
+};
+
+export type StudyBuild = {
+  source?: string;
+  agentId?: string;
+  runId?: string;
+  error?: string;
 };
 
 export type NavItem = {
@@ -158,32 +169,17 @@ export function builtinForSlug(slug: string | undefined, studies: UserStudy[]) {
   return source ? builtinBySlug(source) : undefined;
 }
 
+export const FILE_STEPS = ["Reading brief", "Filing in the library"] as const;
+
 export const BUILD_STEPS = [
+  "Starting Cursor agent",
   "Reading brief",
-  "Resolving tokens",
   "Choosing layout",
-  "Applying type scale",
-  "Wiring motion springs",
-  "Mounting StageCard",
-  "Registering catalog",
+  "Writing StageCard",
+  "Wiring motion",
+  "Mounting study",
 ] as const;
 
-export const EDIT_STEPS = [
-  "Reading brief",
-  "Keeping layout",
-  "Updating copy",
-  "Preserving type scale",
-  "Wiring motion springs",
-  "Mounting StageCard",
-  "Saving catalog",
-] as const;
+export const EDIT_STEPS = ["Reading note", "Saving direction"] as const;
 
-export const REMIX_STEPS = [
-  "Reading original",
-  "Keeping type scale",
-  "Preserving zinc palette",
-  "Applying remix brief",
-  "Wiring motion springs",
-  "Mounting StageCard",
-  "Registering catalog",
-] as const;
+export const REMIX_STEPS = ["Reading original", "Saving remix"] as const;

@@ -1,4 +1,4 @@
-import { type UserStudy } from "./catalog";
+import { type StudyBuild, type UserStudy } from "./catalog";
 
 export const LIBRARY_KEY = "silverman-studio-library";
 
@@ -7,6 +7,7 @@ export type Library = {
   builtinTitles: Record<string, string>;
   hiddenBuiltins: string[];
   builtinEdits: Record<string, string[]>;
+  builtinBuilds: Record<string, StudyBuild>;
   updatedAt: number;
 };
 
@@ -26,13 +27,33 @@ function migrateStudy(raw: unknown): UserStudy | null {
     remixOfTitle: item.remixOfTitle,
     cloneOf: typeof item.cloneOf === "string" ? item.cloneOf : undefined,
     copied: Boolean(item.copied),
+    source: typeof item.source === "string" ? item.source : undefined,
+    agentId: typeof item.agentId === "string" ? item.agentId : undefined,
+    runId: typeof item.runId === "string" ? item.runId : undefined,
+    buildError: typeof item.buildError === "string" ? item.buildError : undefined,
     createdAt: item.createdAt ?? Date.now(),
     updatedAt: item.updatedAt ?? item.createdAt ?? Date.now(),
   };
 }
 
 export function emptyLibrary(): Library {
-  return { studies: [], builtinTitles: {}, hiddenBuiltins: [], builtinEdits: {}, updatedAt: 0 };
+  return { studies: [], builtinTitles: {}, hiddenBuiltins: [], builtinEdits: {}, builtinBuilds: {}, updatedAt: 0 };
+}
+
+function parseBuilds(raw: unknown): Record<string, StudyBuild> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, StudyBuild> = {};
+  for (const [slug, value] of Object.entries(raw)) {
+    if (!value || typeof value !== "object") continue;
+    const item = value as StudyBuild;
+    out[slug] = {
+      source: typeof item.source === "string" ? item.source : undefined,
+      agentId: typeof item.agentId === "string" ? item.agentId : undefined,
+      runId: typeof item.runId === "string" ? item.runId : undefined,
+      error: typeof item.error === "string" ? item.error : undefined,
+    };
+  }
+  return out;
 }
 
 function hasLocalWork(library: Omit<Library, "updatedAt">) {
@@ -40,7 +61,8 @@ function hasLocalWork(library: Omit<Library, "updatedAt">) {
     library.studies.length > 0 ||
     library.hiddenBuiltins.length > 0 ||
     Object.keys(library.builtinTitles).length > 0 ||
-    Object.keys(library.builtinEdits).length > 0
+    Object.keys(library.builtinEdits).length > 0 ||
+    Object.keys(library.builtinBuilds).length > 0
   );
 }
 
@@ -48,7 +70,7 @@ export function parseLibrary(raw: unknown): Library | null {
   if (raw == null) return emptyLibrary();
   if (Array.isArray(raw)) {
     const studies = raw.map(migrateStudy).filter((item): item is UserStudy => item !== null);
-    return { studies, builtinTitles: {}, hiddenBuiltins: [], builtinEdits: {}, updatedAt: studies.length ? Date.now() : 0 };
+    return { studies, builtinTitles: {}, hiddenBuiltins: [], builtinEdits: {}, builtinBuilds: {}, updatedAt: studies.length ? Date.now() : 0 };
   }
   if (typeof raw !== "object") return null;
   const data = raw as Partial<Library>;
@@ -63,7 +85,8 @@ export function parseLibrary(raw: unknown): Library | null {
           ),
         )
       : {};
-  const next = { studies, builtinTitles, hiddenBuiltins, builtinEdits };
+  const builtinBuilds = parseBuilds(data.builtinBuilds);
+  const next = { studies, builtinTitles, hiddenBuiltins, builtinEdits, builtinBuilds };
   const updatedAt = typeof data.updatedAt === "number" && Number.isFinite(data.updatedAt) ? data.updatedAt : hasLocalWork(next) ? Date.now() : 0;
   return { ...next, updatedAt };
 }
@@ -88,6 +111,7 @@ export function touchLibrary(current: Library, patch: Partial<Omit<Library, "upd
     builtinTitles: patch.builtinTitles ?? current.builtinTitles,
     hiddenBuiltins: patch.hiddenBuiltins ?? current.hiddenBuiltins,
     builtinEdits: patch.builtinEdits ?? current.builtinEdits,
+    builtinBuilds: patch.builtinBuilds ?? current.builtinBuilds,
     updatedAt: Date.now(),
   };
 }

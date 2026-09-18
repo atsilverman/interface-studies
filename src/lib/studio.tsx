@@ -1,8 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   BUILD_STEPS,
   EDIT_STEPS,
+  FILE_STEPS,
   REMIX_STEPS,
   builtinBySlug,
   builtins,
@@ -14,14 +16,25 @@ import {
   uniqueSlug,
   type NavItem,
   type SourceStudy,
+  type StudyBuild,
   type UserStudy,
 } from "./catalog";
+import { builtinSource } from "./builtin-source";
 import { isCloudConfigured, pullLibrary, pushLibrary } from "./cloud";
 import { loadLibrary, saveLibrary, touchLibrary, type Library } from "./library";
 import { isWorkspaceId, readWorkspaceId, writeWorkspaceId } from "./workspace";
 
 const SAVE_DEBOUNCE_MS = 2000;
 const PULL_EVERY_MS = 60_000;
+
+export const PROMPT_INPUT_ID = "studio-prompt";
+
+function focusStudioPrompt() {
+  const node = document.getElementById(PROMPT_INPUT_ID);
+  if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement) {
+    node.focus({ preventScroll: true });
+  }
+}
 
 export type SpotlightSession =
   | { kind: "create"; at: number }
@@ -38,6 +51,7 @@ type Job = {
   step: number;
   progress: number;
   steps: readonly string[];
+  hold?: boolean;
 };
 
 type StudioValue = {
@@ -59,6 +73,8 @@ type StudioValue = {
   confirmDelete: () => void;
   syncConfigured: boolean;
   syncStatus: SyncStatus;
+  generateConfigured: boolean;
+  builtinBuilds: Record<string, StudyBuild>;
 };
 
 const StudioContext = createContext<StudioValue | null>(null);
@@ -109,6 +125,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [job, setJob] = useState<Job | null>(null);
   const [deletePrompt, setDeletePrompt] = useState<{ slug: string; title: string } | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(() => (isCloudConfigured() ? "saving" : "off"));
+  const [generateConfigured, setGenerateConfigured] = useState(false);
   const libraryRef = useRef(library);
   const workspaceRef = useRef<string | null>(null);
   const skipPush = useRef(true);
@@ -116,6 +133,21 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const syncConfigured = isCloudConfigured();
 
   libraryRef.current = library;
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/study")
+      .then((response) => response.json() as Promise<{ configured?: boolean }>)
+      .then((data) => {
+        if (!cancelled) setGenerateConfigured(Boolean(data.configured));
+      })
+      .catch(() => {
+        if (!cancelled) setGenerateConfigured(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const commitLibrary = useCallback((patch: (current: Library) => Partial<Omit<Library, "updatedAt">>) => {
     setLibrary((current) => touchLibrary(current, patch(current)));
@@ -244,31 +276,166 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!job?.slug) return;
     const total = job.steps.length;
-
     const tick = window.setInterval(() => {
       setJob((current) => {
         if (!current) return current;
+        if (current.hold) {
+          const step = Math.min(current.step + 1, total - 1);
+          const progress = Math.min(90, 12 + Math.round((step / Math.max(1, total - 1)) * 78));
+          return { ...current, step, progress };
+        }
         const step = current.step + 1;
         const progress = Math.min(100, Math.round((step / total) * 100));
         return { ...current, step, progress };
       });
-    }, 780);
-
-    const done = window.setTimeout(() => setJob(null), 780 * total + 480);
-
+    }, 900);
+    const done = job.hold ? undefined : window.setTimeout(() => setJob(null), 780 * total + 480);
     return () => {
       window.clearInterval(tick);
-      window.clearTimeout(done);
+      if (done) window.clearTimeout(done);
     };
-  }, [job?.slug, job?.steps.length]);
+  }, [job?.hold, job?.slug, job?.steps.length]);
+
+  useEffect(() => {
+    const pendingUsers = userStudies.filter((item) => item.agentId && item.runId && !item.source && !item.buildError);
+    const pendingBuiltins = Object.entries(library.builtinBuilds).filter(
+      ([, build]) => build.agentId && build.runId && !build.source && !build.error,
+    );
+    if (pendingUsers.length === 0 && pendingBuiltins.length === 0) return;
+    let cancelled = false;
+
+    const finishJob = (slug: string) => {
+      setJob((current) => (current?.slug === slug ? { ...current, progress: 100, hold: false } : current));
+      window.setTimeout(() => {
+        if (!cancelled) setJob((current) => (current?.slug === slug ? null : current));
+      }, 450);
+    };
+
+    const fail = (slug: string, message: string, builtin: boolean) => {
+      if (builtin) {
+        commitLibrary((current) => ({
+          builtinBuilds: { ...current.builtinBuilds, [slug]: { ...current.builtinBuilds[slug], error: message } },
+        }));
+      } else {
+        commitLibrary((current) => ({
+          studies: current.studies.map((item) =>
+            item.slug === slug ? { ...item, buildError: message, agentId: undefined, runId: undefined, updatedAt: Date.now() } : item,
+          ),
+        }));
+      }
+      finishJob(slug);
+    };
+
+    const pollOne = async (slug: string, agentId: string, runId: string, builtin: boolean) => {
+      try {
+        const response = await fetch(`/api/study?agentId=${encodeURIComponent(agentId)}&runId=${encodeURIComponent(runId)}`);
+        const data = (await response.json()) as { state?: string; source?: string; error?: string };
+        if (cancelled) return;
+        if (!response.ok) {
+          fail(slug, data.error || "Build failed.", builtin);
+          return;
+        }
+        if (data.state === "ready" && data.source) {
+          if (builtin) {
+            commitLibrary((current) => ({
+              builtinBuilds: { ...current.builtinBuilds, [slug]: { source: data.source } },
+            }));
+          } else {
+            commitLibrary((current) => ({
+              studies: current.studies.map((item) =>
+                item.slug === slug
+                  ? { ...item, source: data.source, agentId: undefined, runId: undefined, buildError: undefined, updatedAt: Date.now() }
+                  : item,
+              ),
+            }));
+          }
+          finishJob(slug);
+        }
+      } catch (error) {
+        if (!cancelled) fail(slug, error instanceof Error ? error.message : "Build failed.", builtin);
+      }
+    };
+
+    const tick = () => {
+      void Promise.all([
+        ...pendingUsers.map((item) => pollOne(item.slug, item.agentId!, item.runId!, false)),
+        ...pendingBuiltins.map(([slug, build]) => pollOne(slug, build.agentId!, build.runId!, true)),
+      ]);
+    };
+
+    tick();
+    const id = window.setInterval(tick, 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [commitLibrary, library.builtinBuilds, userStudies]);
 
   const takenSlugs = useCallback(() => {
     return [...builtins.map((item) => item.slug), ...userStudies.map((item) => item.slug), job?.slug ?? ""];
   }, [job?.slug, userStudies]);
 
-  const startJob = useCallback((record: { slug: string; title: string; category: string; prompt: string }, steps: readonly string[]) => {
-    setJob({ ...record, step: 0, progress: 8, steps });
+  const startJob = useCallback((record: { slug: string; title: string; category: string; prompt: string }, steps: readonly string[], hold = false) => {
+    setJob({ ...record, step: 0, progress: 8, steps, hold });
   }, []);
+
+  const parentCode = useCallback(
+    (slug: string) => {
+      const user = userStudies.find((item) => item.slug === slug);
+      if (user?.source) return user.source;
+      const overlay = library.builtinBuilds[slug]?.source;
+      if (overlay) return overlay;
+      return builtinSource[slug];
+    },
+    [library.builtinBuilds, userStudies],
+  );
+
+  const launchGenerate = useCallback(
+    (slug: string, body: { kind: "create" | "edit" | "remix"; title: string; prompt: string; parentSource?: string }, builtin: boolean) => {
+      void fetch("/api/study", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+        .then(async (response) => {
+          const data = (await response.json()) as { agentId?: string; runId?: string; error?: string };
+          if (!response.ok) throw new Error(data.error || "Could not start the Cursor agent.");
+          if (!data.agentId || !data.runId) throw new Error("Cursor did not return a run.");
+          if (builtin) {
+            commitLibrary((current) => ({
+              builtinBuilds: {
+                ...current.builtinBuilds,
+                [slug]: { ...current.builtinBuilds[slug], agentId: data.agentId, runId: data.runId, error: undefined },
+              },
+            }));
+          } else {
+            commitLibrary((current) => ({
+              studies: current.studies.map((item) =>
+                item.slug === slug
+                  ? { ...item, agentId: data.agentId, runId: data.runId, buildError: undefined, updatedAt: Date.now() }
+                  : item,
+              ),
+            }));
+          }
+        })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : "Could not start the Cursor agent.";
+          if (builtin) {
+            commitLibrary((current) => ({
+              builtinBuilds: { ...current.builtinBuilds, [slug]: { ...current.builtinBuilds[slug], error: message } },
+            }));
+          } else {
+            commitLibrary((current) => ({
+              studies: current.studies.map((item) =>
+                item.slug === slug ? { ...item, buildError: message, updatedAt: Date.now() } : item,
+              ),
+            }));
+          }
+          setJob((current) => (current?.slug === slug ? null : current));
+        });
+    },
+    [commitLibrary],
+  );
 
   const closeSpotlight = useCallback(() => {
     setSpotlightOpen(false);
@@ -276,8 +443,11 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const openCreate = useCallback(() => {
-    setSession({ kind: "create", at: Date.now() });
-    setSpotlightOpen(true);
+    flushSync(() => {
+      setSpotlightOpen(true);
+      setSession((current) => (current.kind === "create" ? current : { kind: "create", at: Date.now() }));
+    });
+    focusStudioPrompt();
   }, []);
 
   const openEdit = useCallback(
@@ -298,18 +468,18 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         title: displayTitle(item.slug, item.title, library.builtinTitles),
         category: item.category,
         builtin: true,
-        building: job?.slug === item.slug,
+        building: job?.slug === item.slug || Boolean(library.builtinBuilds[item.slug]?.agentId && !library.builtinBuilds[item.slug]?.source),
       }));
     const extra = userStudies.map((item) => ({
         slug: item.slug,
         title: item.title,
         category: item.category,
-        building: job?.slug === item.slug,
+        building: job?.slug === item.slug || Boolean(item.agentId && !item.source),
         remix: Boolean(item.remixOf) && !item.copied,
         copied: Boolean(item.copied),
       }));
     return [...built, ...extra];
-  }, [job?.slug, library.builtinTitles, library.hiddenBuiltins, userStudies]);
+  }, [job?.slug, library.builtinBuilds, library.builtinTitles, library.hiddenBuiltins, userStudies]);
 
   const fallbackSlug = useCallback(
     (except?: string) => items.find((item) => item.slug !== except)?.slug ?? builtins[0].slug,
@@ -332,7 +502,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           updatedAt: now,
         };
         commitLibrary((current) => ({ studies: [...current.studies, record] }));
-        startJob(record, BUILD_STEPS);
+        startJob(record, generateConfigured ? BUILD_STEPS : FILE_STEPS, generateConfigured);
+        if (generateConfigured) {
+          launchGenerate(record.slug, { kind: "create", title: record.title, prompt: record.prompt }, false);
+        }
         closeSpotlight();
         navigate(`/${record.slug}`);
         return;
@@ -350,11 +523,18 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         } else {
           commitLibrary((current) => ({
             studies: current.studies.map((item) =>
-              item.slug === source.slug ? { ...item, directions, prompt, updatedAt: Date.now() } : item,
+              item.slug === source.slug ? { ...item, directions, prompt, updatedAt: Date.now(), buildError: undefined } : item,
             ),
           }));
         }
-        startJob({ slug: source.slug, title: source.title, category: source.category, prompt }, EDIT_STEPS);
+        startJob({ slug: source.slug, title: source.title, category: source.category, prompt }, generateConfigured ? BUILD_STEPS : EDIT_STEPS, generateConfigured);
+        if (generateConfigured) {
+          launchGenerate(
+            source.slug,
+            { kind: "edit", title: source.title, prompt, parentSource: parentCode(source.slug) },
+            source.builtin,
+          );
+        }
         closeSpotlight();
         navigate(`/${source.slug}`);
         return;
@@ -368,15 +548,23 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         directions,
         prompt: composePrompt(current.basePrompt, directions),
         updatedAt: Date.now(),
+        buildError: undefined,
       };
       commitLibrary((library) => ({
         studies: library.studies.map((item) => (item.slug === next.slug ? next : item)),
       }));
-      startJob(next, REMIX_STEPS);
+      startJob(next, generateConfigured ? BUILD_STEPS : REMIX_STEPS, generateConfigured);
+      if (generateConfigured) {
+        launchGenerate(
+          next.slug,
+          { kind: "remix", title: next.title, prompt: next.prompt, parentSource: parentCode(current.remixOf ?? next.slug) ?? next.source },
+          false,
+        );
+      }
       closeSpotlight();
       navigate(`/${next.slug}`);
     },
-    [closeSpotlight, commitLibrary, library.builtinEdits, library.builtinTitles, navigate, session, startJob, takenSlugs, userStudies],
+    [closeSpotlight, commitLibrary, generateConfigured, launchGenerate, library.builtinEdits, library.builtinTitles, navigate, parentCode, session, startJob, takenSlugs, userStudies],
   );
 
   const cloneStudy = useCallback(
@@ -389,6 +577,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       ];
       const title = mode === "copy" ? copyTitle(source.title, titles) : remixTitle(source.title, titles);
       const cloneOf = cloneSourceSlug(source.slug, userStudies) ?? (source.builtin ? source.slug : undefined);
+      const fromUser = userStudies.find((item) => item.slug === slug);
+      const sourceCode = fromUser?.source ?? library.builtinBuilds[slug]?.source;
       const record: UserStudy = {
         slug: uniqueSlug(title, takenSlugs()),
         title,
@@ -400,13 +590,14 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         remixOfTitle: source.title,
         cloneOf,
         copied: mode === "copy",
+        source: sourceCode,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
       commitLibrary((current) => ({ studies: [...current.studies, record] }));
       return record;
     },
-    [commitLibrary, library.builtinEdits, library.builtinTitles, takenSlugs, userStudies],
+    [commitLibrary, library.builtinBuilds, library.builtinEdits, library.builtinTitles, takenSlugs, userStudies],
   );
 
   const remixStudy = useCallback(
@@ -495,6 +686,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       confirmDelete,
       syncConfigured,
       syncStatus,
+      generateConfigured,
+      builtinBuilds: library.builtinBuilds,
     }),
     [
       closeDelete,
@@ -514,6 +707,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       submitSpotlight,
       syncConfigured,
       syncStatus,
+      generateConfigured,
+      library.builtinBuilds,
       userStudies,
     ],
   );

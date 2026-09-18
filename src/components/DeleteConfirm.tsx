@@ -75,7 +75,7 @@ export function DeleteConfirm() {
     <AnimatePresence>
       {deletePrompt ? (
         <motion.div
-          className="fixed inset-0 z-[70] flex items-start justify-center bg-zinc-900/15 px-4 pt-[18vh] backdrop-blur-[3px]"
+          className="fixed inset-0 z-[70] flex items-end justify-center bg-zinc-900/15 px-3 pt-16 pb-[max(1.25rem,env(safe-area-inset-bottom))] backdrop-blur-[3px] md:items-start md:px-4 md:pt-[18vh] md:pb-8"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
