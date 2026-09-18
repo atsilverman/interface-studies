@@ -34,19 +34,53 @@ export function useStageDockState() {
   return value;
 }
 
-export function useStageDock(config: StageDockConfig) {
+export function useStageDock(config?: StageDockConfig) {
   const { setDock } = useStageDockState();
   const configRef = useRef(config);
   configRef.current = config;
 
-  const playing = config.playing;
+  const [ownedPlaying, setOwnedPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const progressRef = useRef(0);
+
+  const playing = config?.playing ?? ownedPlaying;
+
+  const onToggle = useCallback(() => {
+    if (configRef.current?.onToggle) configRef.current.onToggle();
+    else setOwnedPlaying((value) => !value);
+  }, []);
+
+  const onReset = useCallback(() => {
+    progressRef.current = 0;
+    setProgress(0);
+    if (configRef.current?.onReset) configRef.current.onReset();
+    else setOwnedPlaying(false);
+  }, []);
 
   useEffect(() => {
     setDock({
-      playing: configRef.current.playing,
-      onToggle: () => configRef.current.onToggle(),
-      onReset: () => configRef.current.onReset(),
+      playing,
+      onToggle,
+      onReset,
     });
     return () => setDock(null);
-  }, [playing, setDock]);
+  }, [playing, onToggle, onReset, setDock]);
+
+  useEffect(() => {
+    if (!playing) return;
+    let frame = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = now - last;
+      last = now;
+      const next = Math.min(1, progressRef.current + dt / 10_000);
+      progressRef.current = next;
+      setProgress(next);
+      if (next < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [playing]);
+
+  return { playing, progress, onToggle, onReset };
 }

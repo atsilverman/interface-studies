@@ -17,7 +17,7 @@ Must:
 - Type: Inter via Tailwind font-sans, IBM Plex Serif is chrome-only, Geist Mono via font-mono for clocks/codes. Weight 400 default, 500 on titles/names.
 - Motion: import { springs } from "../lib/tokens" (snappy, soft, stamp). Linear loops only for meters/clocks/live blink.
 - Desktop AND mobile in one component. const compact = useViewport().layout === "mobile". Rearrange with StageMorph (stable id) — do not remount two copies, no CSS-rotate landscape.
-- Play / pause / reset only via useStageDock from "../lib/stage-dock" if the study is time-based. Never put transport inside StageCard.
+- Play / pause / reset only via useStageDock({ playing, onToggle, onReset }) from "../lib/stage-dock" if the study is time-based. Never put transport inside StageCard. The hook returns { playing, progress } with progress from 0 to 1. Keep match clocks in the study. Do not destructure other fields.
 - Dummy data local. Original physical metaphor or small tool — not a product page.
 
 StageCard props: title, meta?, badge?, badgeTone?: "default"|"live"|"hit", footer?, wide?, children.

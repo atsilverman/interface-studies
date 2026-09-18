@@ -21,15 +21,16 @@ import {
   RotateCcw,
   Smartphone,
   Star,
+  Target,
   Zap,
 } from "lucide-react";
 import { StageCard } from "../components/StageCard";
 import { StageMorph } from "../components/StageMorph";
 import { useStageDock } from "./stage-dock";
-import { springs, card, breakpoints } from "./tokens";
+import { springs, card, breakpoints, nestedRadius } from "./tokens";
 import { useViewport } from "./viewport";
 
-const Lucide = {
+const LucideIcons = {
   ArrowLeft,
   ArrowRight,
   Check,
@@ -48,8 +49,16 @@ const Lucide = {
   RotateCcw,
   Smartphone,
   Star,
+  Target,
   Zap,
 };
+
+const Lucide = new Proxy(LucideIcons, {
+  get(target, prop, receiver) {
+    if (typeof prop === "symbol" || prop in target) return Reflect.get(target, prop, receiver);
+    return Circle;
+  },
+});
 
 const modules: Record<string, unknown> = {
   react: React,
@@ -57,7 +66,7 @@ const modules: Record<string, unknown> = {
   "lucide-react": Lucide,
   "../components/StageCard": { StageCard },
   "../components/StageMorph": { StageMorph },
-  "../lib/tokens": { springs, card, breakpoints },
+  "../lib/tokens": { springs, card, breakpoints, nestedRadius },
   "../lib/stage-dock": { useStageDock },
   "../lib/viewport": { useViewport },
 };
