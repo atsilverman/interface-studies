@@ -67,7 +67,6 @@ type CreateStudyBody = {
   parentSource?: string;
 };
 
-type CursorAgent = { id?: string; latestRunId?: string; status?: string };
 type CursorRun = { id?: string; status?: string; result?: string };
 
 function key() {
@@ -80,24 +79,41 @@ function isCursorConfigured() {
 
 async function cursorFetch(path: string, init?: RequestInit) {
   const token = key();
-  const response = await fetch(`${CURSOR}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
-  const text = await response.text();
-  let data: unknown = null;
-  if (text) {
-    try {
-      data = JSON.parse(text) as unknown;
-    } catch {
-      data = { message: text.slice(0, 400) };
+  try {
+    const response = await fetch(`${CURSOR}${path}`, {
+      ...init,
+      signal: init?.signal ?? AbortSignal.timeout(12_000),
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...(init?.headers ?? {}),
+      },
+    });
+    const text = await response.text();
+    let data: unknown = null;
+    if (text) {
+      try {
+        data = JSON.parse(text) as unknown;
+      } catch {
+        data = { message: text.slice(0, 400) };
+      }
     }
+    return { ok: response.ok, status: response.status, data };
+  } catch (error) {
+    const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+    return {
+      ok: false,
+      status: timedOut ? 504 : 502,
+      data: {
+        message: timedOut
+          ? "Cursor did not respond in time."
+          : error instanceof Error
+            ? error.message
+            : "Cursor request failed.",
+      },
+    };
   }
-  return { ok: response.ok, status: response.status, data };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -129,32 +145,60 @@ function buildPrompt(body: CreateStudyBody) {
   return `${SPEC}\n\n${kind}\nTitle: ${body.title}\nBrief:\n${body.prompt}${parent}`;
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function runIdFrom(record: Record<string, unknown>) {
+  if (typeof record.latestRunId === "string" && record.latestRunId) return record.latestRunId;
+  const run = asRecord(record.run);
+  if (typeof run.id === "string" && run.id) return run.id;
+  const agent = asRecord(record.agent);
+  if (typeof agent.latestRunId === "string" && agent.latestRunId) return agent.latestRunId;
+  return "";
+}
+
+async function lookupNamedAgent(name: string) {
+  const listed = await cursorFetch("/agents?limit=20");
+  if (!listed.ok) return null;
+  const items = Array.isArray(asRecord(listed.data).items) ? (asRecord(listed.data).items as unknown[]) : [];
+  const match = items.map(asRecord).find((item) => item.name === name);
+  if (!match || typeof match.id !== "string") return null;
+  let runId = runIdFrom(match);
+  if (!runId) {
+    const full = await cursorFetch(`/agents/${encodeURIComponent(match.id)}`);
+    if (full.ok) runId = runIdFrom(asRecord(full.data));
+  }
+  return { agentId: match.id, runId };
+}
+
 async function startStudyRun(body: CreateStudyBody) {
   if (!isCursorConfigured()) {
     return { ok: false as const, status: 501, error: "CURSOR_API_KEY is not set on the server." };
   }
+  const name = `Study: ${body.title} · ${Date.now().toString(36)}`.slice(0, 100);
   const payload = {
     prompt: { text: buildPrompt(body) },
-    name: `Study: ${body.title}`.slice(0, 100),
-    model: { id: "composer-2.5" },
+    name,
   };
-  const created = await cursorFetch("/agents", { method: "POST", body: JSON.stringify(payload) });
-  if (!created.ok) {
-    return {
-      ok: false as const,
-      status: created.status,
-      error: errorMessage(created.data, "Cursor could not start the agent."),
-    };
+  // Create often never flushes a body until the run is far along, which trips
+  // Vercel's 30s cap. The agent still appears on GET /v1/agents, so we kick
+  // off create and resolve ids from the list.
+  void cursorFetch("/agents", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(8000),
+  });
+  const deadline = Date.now() + 16_000;
+  await sleep(400);
+  while (Date.now() < deadline) {
+    const found = await lookupNamedAgent(name);
+    if (found?.agentId && found.runId) {
+      return { ok: true as const, agentId: found.agentId, runId: found.runId };
+    }
+    await sleep(700);
   }
-  const root = asRecord(created.data);
-  const agent = asRecord(root.agent) as CursorAgent;
-  const run = asRecord(root.run) as CursorRun;
-  const agentId = agent.id ?? (typeof root.id === "string" ? root.id : "");
-  const runId = run.id ?? agent.latestRunId ?? "";
-  if (!agentId || !runId) {
-    return { ok: false as const, status: 502, error: "Cursor did not return an agent id." };
-  }
-  return { ok: true as const, agentId, runId };
+  return { ok: false as const, status: 504, error: "Cursor accepted the brief but did not return a run in time." };
 }
 
 async function pollStudyRun(agentId: string, runId: string) {
@@ -219,21 +263,48 @@ function send(res: ServerResponse, status: number, body: unknown) {
   res.end(JSON.stringify(body));
 }
 
-function readBody(req: IncomingMessage) {
+type BodyRequest = IncomingMessage & { body?: unknown };
+
+function readStream(req: IncomingMessage, ms = 4000) {
   return new Promise<string>((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
-    req.on("data", (chunk: Buffer) => {
+    const timer = setTimeout(() => fail(new Error("body timeout")), ms);
+    const fail = (error: Error) => {
+      clearTimeout(timer);
+      req.off("data", onData);
+      req.off("end", onEnd);
+      req.off("error", onError);
+      reject(error);
+    };
+    const onData = (chunk: Buffer) => {
       size += chunk.length;
       if (size > 400_000) {
-        reject(new Error("payload too large"));
+        fail(new Error("payload too large"));
         return;
       }
       chunks.push(chunk);
-    });
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
+    };
+    const onEnd = () => {
+      clearTimeout(timer);
+      req.off("data", onData);
+      req.off("end", onEnd);
+      req.off("error", onError);
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    };
+    const onError = (error: Error) => fail(error);
+    req.on("data", onData);
+    req.on("end", onEnd);
+    req.on("error", onError);
+    req.resume();
   });
+}
+
+async function readJsonBody(req: BodyRequest) {
+  if (typeof req.body === "string") return req.body ? JSON.parse(req.body) : {};
+  if (req.body && typeof req.body === "object") return req.body;
+  const raw = await readStream(req);
+  return raw ? JSON.parse(raw) : {};
 }
 
 function parseKind(value: unknown): StudyKind | null {
@@ -277,7 +348,7 @@ export async function handleStudy(req: IncomingMessage, res: ServerResponse) {
 
   let parsed: CreateStudyBody;
   try {
-    const raw = JSON.parse(await readBody(req)) as Partial<CreateStudyBody>;
+    const raw = (await readJsonBody(req)) as Partial<CreateStudyBody>;
     const kind = parseKind(raw.kind);
     const title = typeof raw.title === "string" ? raw.title.trim().slice(0, 80) : "";
     const prompt = typeof raw.prompt === "string" ? raw.prompt.trim().slice(0, 8000) : "";
@@ -287,8 +358,12 @@ export async function handleStudy(req: IncomingMessage, res: ServerResponse) {
       return;
     }
     parsed = { kind, title, prompt, parentSource };
-  } catch {
-    send(res, 400, { error: "Invalid JSON." });
+  } catch (error) {
+    send(
+      res,
+      400,
+      { error: error instanceof Error && error.message === "body timeout" ? "Could not read the request body." : "Invalid JSON." },
+    );
     return;
   }
 

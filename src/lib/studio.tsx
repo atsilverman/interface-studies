@@ -36,6 +36,20 @@ function focusStudioPrompt() {
   }
 }
 
+async function readStudyResponse(response: Response) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text) as { agentId?: string; runId?: string; state?: string; source?: string; error?: string };
+  } catch {
+    const timeout = response.status === 504 || /FUNCTION_INVOCATION_TIMEOUT/i.test(text);
+    throw new Error(
+      timeout
+        ? "The build request timed out. Try again in a moment."
+        : text.replace(/\s+/g, " ").trim().slice(0, 180) || `Request failed (${response.status}).`,
+    );
+  }
+}
+
 export type SpotlightSession =
   | { kind: "create"; at: number }
   | { kind: "edit"; slug: string; title: string; at: number }
@@ -329,7 +343,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     const pollOne = async (slug: string, agentId: string, runId: string, builtin: boolean) => {
       try {
         const response = await fetch(`/api/study?agentId=${encodeURIComponent(agentId)}&runId=${encodeURIComponent(runId)}`);
-        const data = (await response.json()) as { state?: string; source?: string; error?: string };
+        const data = await readStudyResponse(response);
         if (cancelled) return;
         if (!response.ok) {
           fail(slug, data.error || "Build failed.", builtin);
@@ -398,7 +412,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify(body),
       })
         .then(async (response) => {
-          const data = (await response.json()) as { agentId?: string; runId?: string; error?: string };
+          const data = await readStudyResponse(response);
           if (!response.ok) throw new Error(data.error || "Could not start the Cursor agent.");
           if (!data.agentId || !data.runId) throw new Error("Cursor did not return a run.");
           if (builtin) {

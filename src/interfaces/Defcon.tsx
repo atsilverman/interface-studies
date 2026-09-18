@@ -4,7 +4,7 @@ import { useParams } from "react-router-dom";
 import { StageCard } from "../components/StageCard";
 import { StageMorph } from "../components/StageMorph";
 import { useStageDock } from "../lib/stage-dock";
-import { springs } from "../lib/tokens";
+import { card, nestedRadius, springs } from "../lib/tokens";
 import { useViewport } from "../lib/viewport";
 
 const THRESHOLD = 10;
@@ -74,11 +74,44 @@ function LiveDot() {
   );
 }
 
+function AchievedCheck() {
+  return (
+    <motion.svg
+      viewBox="0 0 24 24"
+      width={15}
+      height={15}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="shrink-0 text-emerald-600"
+    >
+      <motion.circle
+        cx="12"
+        cy="12"
+        r="10"
+        initial={{ pathLength: 0 }}
+        animate={{ pathLength: 1 }}
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      />
+      <motion.path
+        d="m9 12 2 2 4-4"
+        initial={{ pathLength: 0, opacity: 0 }}
+        animate={{ pathLength: 1, opacity: 1 }}
+        transition={{ duration: 0.28, delay: 0.18, ease: [0.22, 1, 0.36, 1] }}
+      />
+    </motion.svg>
+  );
+}
+
 export function Defcon() {
   const { slug } = useParams();
   const morph = slug ?? "defcon";
   const { layout } = useViewport();
   const compact = layout === "mobile";
+  const wellRadius = nestedRadius(card.radius, compact ? card.insetCompact : card.inset);
   const [running, setRunning] = useState(false);
   const [minute, setMinute] = useState(0);
   const [inspect, setInspect] = useState(false);
@@ -398,17 +431,20 @@ export function Defcon() {
 
         <AnimatePresence>
           {achieved ? (
-            <motion.p
-              initial={{ opacity: 0, y: 6 }}
+            <motion.div
+              role="status"
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               transition={springs.stamp}
-              className="flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-2 text-[12px] tracking-tight text-emerald-800"
+              className={`flex items-center gap-2 border-t border-emerald-100/80 bg-emerald-50 text-[12px] tracking-tight text-emerald-700 ${
+                compact ? "-mx-4 -mb-4 mt-1 px-4 py-2.5" : "-mx-5 -mb-4 mt-1 px-5 py-2.5"
+              }`}
+              style={{ borderBottomLeftRadius: wellRadius, borderBottomRightRadius: wellRadius }}
             >
+              <AchievedCheck />
               DefCon achieved
-              <span aria-hidden="true" className="size-1.5 rounded-full bg-emerald-500" />
-              <span className="font-mono tracking-tight tabular-nums">+2pts</span>
-            </motion.p>
+            </motion.div>
           ) : null}
         </AnimatePresence>
       </div>
