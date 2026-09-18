@@ -85,7 +85,7 @@ export function compileStudy(source: string): ComponentType | null {
   return typeof candidate === "function" ? (candidate as ComponentType) : null;
 }
 
-type BoundaryProps = { fallback: ReactNode; children: ReactNode };
+type BoundaryProps = { fallback: ReactNode | ((error: string) => ReactNode); children: ReactNode };
 
 type BoundaryState = { error: string | null };
 
@@ -93,11 +93,18 @@ export class StudyBoundary extends Component<BoundaryProps, BoundaryState> {
   state: BoundaryState = { error: null };
 
   static getDerivedStateFromError(error: Error) {
-    return { error: error.message };
+    return { error: error.message || String(error) };
+  }
+
+  componentDidCatch(error: Error, info: { componentStack?: string }) {
+    console.error("[study]", error, info.componentStack);
   }
 
   render() {
-    if (this.state.error) return this.props.fallback;
+    if (this.state.error) {
+      const { fallback } = this.props;
+      return typeof fallback === "function" ? fallback(this.state.error) : fallback;
+    }
     return this.props.children;
   }
 }
