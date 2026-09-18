@@ -27,7 +27,7 @@ export function RuntimeStatus() {
                 animate={{ opacity: [1, 0.28, 1] }}
                 transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
               />
-              {job.hold ? "Building" : "Filing"}
+              {job.progress >= 100 ? "Live" : job.hold ? "Building" : "Filing"}
             </span>
           </div>
           <p className="mb-2 font-mono text-[11px] tracking-tight text-zinc-400">{label}</p>

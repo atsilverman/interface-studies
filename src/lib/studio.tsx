@@ -22,7 +22,7 @@ import {
 import { builtinSource } from "./builtin-source";
 import { isCloudConfigured, pullLibrary, pushLibrary } from "./cloud";
 import { loadLibrary, saveLibrary, touchLibrary, type Library } from "./library";
-import { isWorkspaceId, readWorkspaceId, writeWorkspaceId } from "./workspace";
+import { isWorkspaceId, readWorkspaceId, siteWorkspaceId, writeWorkspaceId } from "./workspace";
 
 const SAVE_DEBOUNCE_MS = 2000;
 const PULL_EVERY_MS = 60_000;
@@ -87,6 +87,7 @@ type StudioValue = {
   confirmDelete: () => void;
   syncConfigured: boolean;
   syncStatus: SyncStatus;
+  syncReady: boolean;
   generateConfigured: boolean;
   builtinBuilds: Record<string, StudyBuild>;
 };
@@ -139,6 +140,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [job, setJob] = useState<Job | null>(null);
   const [deletePrompt, setDeletePrompt] = useState<{ slug: string; title: string } | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(() => (isCloudConfigured() ? "saving" : "off"));
+  const [syncReady, setSyncReady] = useState(!isCloudConfigured());
   const [generateConfigured, setGenerateConfigured] = useState(false);
   const libraryRef = useRef(library);
   const workspaceRef = useRef<string | null>(null);
@@ -187,6 +189,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         next.delete("workspace");
         setSearchParams(next, { replace: true });
       }
+    } else {
+      writeWorkspaceId(siteWorkspaceId());
     }
 
     const id = readWorkspaceId();
@@ -233,6 +237,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
     void cycle(joining).finally(() => {
       skipPush.current = false;
+      if (!cancelled) setSyncReady(true);
     });
 
     const interval = window.setInterval(() => void cycle(false), PULL_EVERY_MS);
@@ -311,18 +316,22 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   }, [job?.hold, job?.slug, job?.steps.length]);
 
   useEffect(() => {
-    const pendingUsers = userStudies.filter((item) => item.agentId && item.runId && !item.source && !item.buildError);
+    const pendingUsers = userStudies.filter((item) => item.agentId && item.runId && !item.buildError);
     const pendingBuiltins = Object.entries(library.builtinBuilds).filter(
-      ([, build]) => build.agentId && build.runId && !build.source && !build.error,
+      ([, build]) => build.agentId && build.runId && !build.error,
     );
     if (pendingUsers.length === 0 && pendingBuiltins.length === 0) return;
     let cancelled = false;
 
-    const finishJob = (slug: string) => {
+    const finishJob = (slug: string, reload = false) => {
       setJob((current) => (current?.slug === slug ? { ...current, progress: 100, hold: false } : current));
       window.setTimeout(() => {
-        if (!cancelled) setJob((current) => (current?.slug === slug ? null : current));
-      }, 450);
+        if (reload && window.location.pathname === `/${slug}`) {
+          window.location.reload();
+          return;
+        }
+        setJob((current) => (current?.slug === slug ? null : current));
+      }, 560);
     };
 
     const fail = (slug: string, message: string, builtin: boolean) => {
@@ -337,7 +346,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           ),
         }));
       }
-      finishJob(slug);
+      setJob((current) => (current?.slug === slug ? null : current));
     };
 
     const pollOne = async (slug: string, agentId: string, runId: string, builtin: boolean) => {
@@ -346,27 +355,35 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         const data = await readStudyResponse(response);
         if (cancelled) return;
         if (!response.ok) {
+          if (response.status === 504 || response.status >= 500) return;
           fail(slug, data.error || "Build failed.", builtin);
           return;
         }
         if (data.state === "ready" && data.source) {
-          if (builtin) {
-            commitLibrary((current) => ({
-              builtinBuilds: { ...current.builtinBuilds, [slug]: { source: data.source } },
-            }));
-          } else {
-            commitLibrary((current) => ({
-              studies: current.studies.map((item) =>
-                item.slug === slug
-                  ? { ...item, source: data.source, agentId: undefined, runId: undefined, buildError: undefined, updatedAt: Date.now() }
-                  : item,
-              ),
-            }));
-          }
-          finishJob(slug);
+          const source = data.source;
+          const next = builtin
+            ? touchLibrary(libraryRef.current, {
+                builtinBuilds: { ...libraryRef.current.builtinBuilds, [slug]: { source } },
+              })
+            : touchLibrary(libraryRef.current, {
+                studies: libraryRef.current.studies.map((item) =>
+                  item.slug === slug
+                    ? { ...item, source, agentId: undefined, runId: undefined, buildError: undefined, updatedAt: Date.now() }
+                    : item,
+                ),
+              });
+          libraryRef.current = next;
+          saveLibrary(next);
+          setLibrary(next);
+          finishJob(slug, true);
         }
       } catch (error) {
-        if (!cancelled) fail(slug, error instanceof Error ? error.message : "Build failed.", builtin);
+        if (cancelled) return;
+        const transient =
+          (error instanceof TypeError) ||
+          (error instanceof Error && /timed out|Failed to fetch|Load failed/i.test(error.message));
+        if (transient) return;
+        fail(slug, error instanceof Error ? error.message : "Build failed.", builtin);
       }
     };
 
@@ -468,8 +485,11 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     (slug: string) => {
       const source = lookupSource(slug, userStudies, library.builtinTitles, library.builtinEdits);
       if (!source) return;
-      setSession({ kind: "edit", slug: source.slug, title: source.title, at: Date.now() });
-      setSpotlightOpen(true);
+      flushSync(() => {
+        setSession({ kind: "edit", slug: source.slug, title: source.title, at: Date.now() });
+        setSpotlightOpen(true);
+      });
+      focusStudioPrompt();
     },
     [library.builtinEdits, library.builtinTitles, userStudies],
   );
@@ -482,13 +502,13 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         title: displayTitle(item.slug, item.title, library.builtinTitles),
         category: item.category,
         builtin: true,
-        building: job?.slug === item.slug || Boolean(library.builtinBuilds[item.slug]?.agentId && !library.builtinBuilds[item.slug]?.source),
+        building: job?.slug === item.slug || Boolean(library.builtinBuilds[item.slug]?.agentId && !library.builtinBuilds[item.slug]?.error),
       }));
     const extra = userStudies.map((item) => ({
         slug: item.slug,
         title: item.title,
         category: item.category,
-        building: job?.slug === item.slug || Boolean(item.agentId && !item.source),
+        building: job?.slug === item.slug || Boolean(item.agentId && item.runId && !item.buildError),
         remix: Boolean(item.remixOf) && !item.copied,
         copied: Boolean(item.copied),
       }));
@@ -618,9 +638,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     (slug: string) => {
       const record = cloneStudy(slug, "remix");
       if (!record) return;
-      setSession({ kind: "remix", slug: record.slug, title: record.title, sourceTitle: record.remixOfTitle ?? record.title, at: Date.now() });
-      setSpotlightOpen(true);
+      flushSync(() => {
+        setSession({ kind: "remix", slug: record.slug, title: record.title, sourceTitle: record.remixOfTitle ?? record.title, at: Date.now() });
+        setSpotlightOpen(true);
+      });
       navigate(`/${record.slug}`);
+      focusStudioPrompt();
     },
     [cloneStudy, navigate],
   );
@@ -700,6 +723,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       confirmDelete,
       syncConfigured,
       syncStatus,
+      syncReady,
       generateConfigured,
       builtinBuilds: library.builtinBuilds,
     }),
@@ -721,6 +745,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       submitSpotlight,
       syncConfigured,
       syncStatus,
+      syncReady,
       generateConfigured,
       library.builtinBuilds,
       userStudies,

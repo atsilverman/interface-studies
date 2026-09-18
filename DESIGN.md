@@ -79,12 +79,13 @@ Ask: *Would this control exist if the widget were live in a product, not being d
 ## Studio chrome
 
 - Sidebar title **Interface Studies**. Subtitle: a playground for original interface design.
-- Default route `/defcon`. Only original studies in the nav.
-- Runtime overlay cycles filing statuses (`FILE_STEPS` / `EDIT_STEPS` / `REMIX_STEPS` in `catalog.ts`) with a progress bar. It does not compile a study.
+- `/` restores the last user study on this device, or the newest in the cloud library, otherwise Defcon. Only original studies in the nav.
+- Runtime overlay cycles filing statuses (`FILE_STEPS` / `EDIT_STEPS` / `REMIX_STEPS` in `catalog.ts`) with a progress bar. When a Cursor build is ready it stamps **Live** and the page reloads so the new study is unmistakable.
+- Prompt, remix, edit, and delete sheets sit at the **top of the visual viewport** so the field is on screen without scrolling — including when the keyboard is open. Do not pin them to the bottom on a phone.
 - Stage playback sits top-right of the stage when a study registers. Hidden otherwise. Same `size-9` hit targets. Lucide `Play` / `Pause` / `RotateCcw`. Hover: play emerald, pause amber, reset red. Reset while playing restarts the clock and keeps running. On a phone the same controls are a left floating cluster (`size-11`, zinc-100/blur ring, `shadow-heavy`).
-- Library cloud save lives on the **stage**, top left, on desktop. On a phone it sits in the header top-right (where play / reset used to be) — cloud icon, spinning loader while saving, brief emerald splash when the write lands. Status only; not a control.
+- Library cloud save lives on the **stage**, top left, on desktop. On a phone it sits in the header top-right (where play / reset used to be) — cloud icon, spinning loader while saving, brief emerald splash when the write lands. Status only; not a control. Do not bounce an unknown slug to `/defcon` until the cloud library has loaded — keep the URL.
 - Stage layout: auto / desktop / mobile on **wide** screens. Monitor and phone icons on the stage toggle, **bottom right** of the stage. On a narrow screen the toggle is omitted and the study always uses the mobile composition. + is a floating zinc-900 disc, bottom-right of the stage, with a zinc-100/blur ring and `shadow-heavy`. The study is **centered** in the remaining well, with padding so it never sits under the floating clusters. The page is `h-dvh` and does not scroll; the stage well does if the card is taller. Click the active explicit mode again to return to auto.
-- Left rail library (copies, remixes, titles) can periodic-sync to free Supabase when `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set. Stage layout stays on this device. Last write wins. No realtime.
+- Left rail library (copies, remixes, titles) can periodic-sync to free Supabase when `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set. Every browser uses the same site workspace, so desktop and phone share the rail. Stage layout stays on this device. Last write wins. No realtime.
 
 ## Stage layout (desktop vs mobile)
 

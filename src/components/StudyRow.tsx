@@ -145,6 +145,11 @@ export function StudyRow({ item }: StudyRowProps) {
             type="button"
             role="menuitem"
             className="block w-full px-3 py-1.5 text-left text-[13px] tracking-tight text-zinc-900 hover:bg-zinc-100"
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
+              run(() => openEdit(item.slug));
+            }}
             onClick={() => run(() => openEdit(item.slug))}
           >
             Edit
@@ -153,6 +158,11 @@ export function StudyRow({ item }: StudyRowProps) {
             type="button"
             role="menuitem"
             className="block w-full px-3 py-1.5 text-left text-[13px] tracking-tight text-zinc-900 hover:bg-zinc-100"
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
+              run(() => remixStudy(item.slug));
+            }}
             onClick={() => run(() => remixStudy(item.slug))}
           >
             Remix

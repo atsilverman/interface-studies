@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import { springs } from "../lib/tokens";
 import { useStudio } from "../lib/studio";
+import { StudioOverlay } from "./StudioOverlay";
 
 function DeleteForm({
   title,
@@ -15,8 +16,7 @@ function DeleteForm({
   const matched = value.trim() === title;
 
   useEffect(() => {
-    const id = window.setTimeout(() => input.current?.focus(), 20);
-    return () => window.clearTimeout(id);
+    input.current?.focus({ preventScroll: true });
   }, []);
 
   return (
@@ -24,11 +24,11 @@ function DeleteForm({
       role="dialog"
       aria-modal="true"
       aria-label={`Delete ${title}`}
-      initial={{ opacity: 0, y: 10, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 8, scale: 0.98 }}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 6 }}
       transition={springs.snappy}
-      className="shadow-heavy w-full max-w-[560px] overflow-hidden rounded-[22px] bg-white"
+      className="shadow-heavy w-full overflow-hidden rounded-[22px] bg-white"
       onClick={(event) => event.stopPropagation()}
       onSubmit={(event) => {
         event.preventDefault();
@@ -72,22 +72,14 @@ export function DeleteConfirm() {
   }, [closeDelete, deletePrompt]);
 
   return (
-    <AnimatePresence>
+    <StudioOverlay open={Boolean(deletePrompt)} onClose={closeDelete} zClass="z-[70]">
       {deletePrompt ? (
-        <motion.div
-          className="fixed inset-0 z-[70] flex items-end justify-center bg-zinc-900/15 px-3 pt-16 pb-[max(1.25rem,env(safe-area-inset-bottom))] backdrop-blur-[3px] md:items-start md:px-4 md:pt-[18vh] md:pb-8"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={closeDelete}
-        >
-          <DeleteForm
-            key={`${deletePrompt.slug}-${deletePrompt.title}`}
-            title={deletePrompt.title}
-            onConfirm={confirmDelete}
-          />
-        </motion.div>
+        <DeleteForm
+          key={`${deletePrompt.slug}-${deletePrompt.title}`}
+          title={deletePrompt.title}
+          onConfirm={confirmDelete}
+        />
       ) : null}
-    </AnimatePresence>
+    </StudioOverlay>
   );
 }

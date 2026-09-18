@@ -20,4 +20,4 @@ The deployed gallery does not call an LLM from the browser. Do not put secrets i
 1. Create a free project at [supabase.com](https://supabase.com).
 2. SQL Editor → paste and run [`supabase/schema.sql`](./supabase/schema.sql).
 3. Project Settings → API → copy **Project URL** and **anon public** key into `.env` as `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Same names in Vercel env, then redeploy.
-4. Restart `npm run dev`. The stage shows a cloud chip (spinner while saving). Last write wins, about every 60s plus a couple of seconds after an edit. Desktop/mobile stage toggle does not sync.
+4. Restart `npm run dev`. The stage shows a cloud chip (spinner while saving). Last write wins, about every 60s plus a couple of seconds after an edit. Desktop and phone share one site workspace. Desktop/mobile stage toggle does not sync.

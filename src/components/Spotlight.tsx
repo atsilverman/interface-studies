@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import { springs } from "../lib/tokens";
+import { useVisualFrame } from "../lib/visual-frame";
 import { PROMPT_INPUT_ID, useStudio, type SpotlightSession } from "../lib/studio";
+import { StudioOverlay } from "./StudioOverlay";
 
 function sessionKey(session: SpotlightSession) {
   if (session.kind === "create") return "create";
@@ -9,10 +11,9 @@ function sessionKey(session: SpotlightSession) {
   return `remix-${session.slug}`;
 }
 
-function fitPrompt(node: HTMLTextAreaElement | null) {
+function fitPrompt(node: HTMLTextAreaElement | null, cap: number) {
   if (!node) return;
   node.style.height = "auto";
-  const cap = Math.min(window.innerHeight * 0.45, 320);
   node.style.height = `${Math.min(node.scrollHeight, cap)}px`;
 }
 
@@ -27,17 +28,17 @@ function SpotlightForm({
 }) {
   const [value, setValue] = useState("");
   const input = useRef<HTMLTextAreaElement>(null);
+  const frame = useVisualFrame(true);
 
   useEffect(() => {
     input.current?.focus({ preventScroll: true });
   }, []);
 
+  const cap = Math.max(52, Math.min(frame.height * (frame.inset > 80 ? 0.28 : 0.4), 280));
+
   useLayoutEffect(() => {
-    fitPrompt(input.current);
-    const onResize = () => fitPrompt(input.current);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [value]);
+    fitPrompt(input.current, cap);
+  }, [cap, value]);
 
   const label = session.kind === "remix" ? `Remix ${session.sourceTitle}` : session.kind === "edit" ? `Edit ${session.title}` : "New interface";
   const placeholder =
@@ -66,11 +67,11 @@ function SpotlightForm({
     <motion.form
       role="dialog"
       aria-label={label}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 6 }}
       transition={springs.snappy}
-      className="shadow-heavy w-full max-w-[560px] overflow-hidden rounded-[22px] bg-white"
+      className="shadow-heavy flex max-h-full w-full flex-col overflow-hidden rounded-[22px] bg-white"
       onClick={(event) => event.stopPropagation()}
       onSubmit={(event) => {
         event.preventDefault();
@@ -78,7 +79,7 @@ function SpotlightForm({
       }}
     >
       {padded ? (
-        <p className="px-5 pt-4 text-[11px] tracking-[0.14em] text-zinc-400 uppercase">{label}</p>
+        <p className="shrink-0 px-5 pt-4 text-[11px] tracking-[0.14em] text-zinc-400 uppercase">{label}</p>
       ) : null}
       <textarea
         id={PROMPT_INPUT_ID}
@@ -103,7 +104,7 @@ function SpotlightForm({
           padded ? "pt-2 pb-4" : "py-4"
         }`}
       />
-      <div className="flex items-center justify-between gap-3 border-t border-zinc-100 px-5 py-2.5">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-t border-zinc-100 px-5 py-2.5">
         <p className="min-w-0 truncate font-mono text-[10px] tracking-tight text-zinc-400">{hint}</p>
         <button
           type="submit"
@@ -118,11 +119,6 @@ function SpotlightForm({
 
 export function Spotlight() {
   const { spotlightOpen, session, closeSpotlight, submitSpotlight, generateConfigured } = useStudio();
-  const ignoreBackdropUntil = useRef(0);
-
-  useEffect(() => {
-    if (spotlightOpen) ignoreBackdropUntil.current = Date.now() + 500;
-  }, [spotlightOpen]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -133,26 +129,13 @@ export function Spotlight() {
   }, [closeSpotlight, spotlightOpen]);
 
   return (
-    <AnimatePresence>
-      {spotlightOpen ? (
-        <motion.div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-900/15 px-3 pt-16 pb-[max(1.25rem,env(safe-area-inset-bottom))] backdrop-blur-[3px] md:items-start md:px-4 md:pt-[18vh] md:pb-8"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={() => {
-            if (Date.now() < ignoreBackdropUntil.current) return;
-            closeSpotlight();
-          }}
-        >
-          <SpotlightForm
-            key={sessionKey(session)}
-            session={session}
-            generateConfigured={generateConfigured}
-            onSubmit={submitSpotlight}
-          />
-        </motion.div>
-      ) : null}
-    </AnimatePresence>
+    <StudioOverlay open={spotlightOpen} onClose={closeSpotlight}>
+      <SpotlightForm
+        key={sessionKey(session)}
+        session={session}
+        generateConfigured={generateConfigured}
+        onSubmit={submitSpotlight}
+      />
+    </StudioOverlay>
   );
 }
