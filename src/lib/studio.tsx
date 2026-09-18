@@ -1,12 +1,14 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   BUILD_STEPS,
   EDIT_STEPS,
   REMIX_STEPS,
   builtinBySlug,
   builtins,
+  cloneSourceSlug,
   composePrompt,
+  copyTitle,
   deriveStudy,
   remixTitle,
   uniqueSlug,
@@ -14,13 +16,19 @@ import {
   type SourceStudy,
   type UserStudy,
 } from "./catalog";
+import { isCloudConfigured, pullLibrary, pushLibrary } from "./cloud";
+import { loadLibrary, saveLibrary, touchLibrary, type Library } from "./library";
+import { isWorkspaceId, readWorkspaceId, writeWorkspaceId } from "./workspace";
 
-const STORAGE_KEY = "silverman-studio-library";
+const SAVE_DEBOUNCE_MS = 2000;
+const PULL_EVERY_MS = 60_000;
 
 export type SpotlightSession =
   | { kind: "create"; at: number }
-  | { kind: "edit"; slug: string; title: string; prompt: string; at: number }
+  | { kind: "edit"; slug: string; title: string; at: number }
   | { kind: "remix"; slug: string; title: string; sourceTitle: string; at: number };
+
+export type SyncStatus = "off" | "saving" | "saved" | "offline" | "error";
 
 type Job = {
   slug: string;
@@ -32,12 +40,6 @@ type Job = {
   steps: readonly string[];
 };
 
-type Library = {
-  studies: UserStudy[];
-  builtinTitles: Record<string, string>;
-  hiddenBuiltins: string[];
-};
-
 type StudioValue = {
   items: NavItem[];
   userStudies: UserStudy[];
@@ -46,64 +48,31 @@ type StudioValue = {
   job: Job | null;
   openCreate: () => void;
   openEdit: (slug: string) => void;
-  openIterate: (slug: string) => void;
   closeSpotlight: () => void;
   submitSpotlight: (value: string) => void;
   remixStudy: (slug: string) => void;
+  copyStudy: (slug: string) => void;
   renameStudy: (slug: string, title: string) => void;
-  deleteStudy: (slug: string) => void;
+  deletePrompt: { slug: string; title: string } | null;
+  requestDelete: (slug: string, title: string) => void;
+  closeDelete: () => void;
+  confirmDelete: () => void;
+  syncConfigured: boolean;
+  syncStatus: SyncStatus;
 };
 
 const StudioContext = createContext<StudioValue | null>(null);
-
-function migrateStudy(raw: unknown): UserStudy | null {
-  if (!raw || typeof raw !== "object") return null;
-  const item = raw as Partial<UserStudy>;
-  if (!item.slug || !item.title || typeof item.prompt !== "string") return null;
-  const prompt = item.prompt;
-  return {
-    slug: item.slug,
-    title: item.title,
-    category: item.category ?? "Studio",
-    prompt,
-    basePrompt: item.basePrompt ?? prompt,
-    directions: Array.isArray(item.directions) ? item.directions.filter((note) => typeof note === "string") : [],
-    remixOf: item.remixOf,
-    remixOfTitle: item.remixOfTitle,
-    createdAt: item.createdAt ?? Date.now(),
-    updatedAt: item.updatedAt ?? item.createdAt ?? Date.now(),
-  };
-}
-
-function emptyLibrary(): Library {
-  return { studies: [], builtinTitles: {}, hiddenBuiltins: [] };
-}
-
-function loadLibrary(): Library {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return emptyLibrary();
-    const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) {
-      return { studies: parsed.map(migrateStudy).filter((item): item is UserStudy => item !== null), builtinTitles: {}, hiddenBuiltins: [] };
-    }
-    if (!parsed || typeof parsed !== "object") return emptyLibrary();
-    const data = parsed as Partial<Library>;
-    return {
-      studies: Array.isArray(data.studies) ? data.studies.map(migrateStudy).filter((item): item is UserStudy => item !== null) : [],
-      builtinTitles: data.builtinTitles && typeof data.builtinTitles === "object" ? data.builtinTitles : {},
-      hiddenBuiltins: Array.isArray(data.hiddenBuiltins) ? data.hiddenBuiltins.filter((slug) => typeof slug === "string") : [],
-    };
-  } catch {
-    return emptyLibrary();
-  }
-}
 
 function displayTitle(slug: string, fallback: string, builtinTitles: Record<string, string>) {
   return builtinTitles[slug]?.trim() || fallback;
 }
 
-function lookupSource(slug: string, studies: UserStudy[], builtinTitles: Record<string, string>): SourceStudy | null {
+function lookupSource(
+  slug: string,
+  studies: UserStudy[],
+  builtinTitles: Record<string, string>,
+  builtinEdits: Record<string, string[]>,
+): SourceStudy | null {
   const user = studies.find((item) => item.slug === slug);
   if (user) {
     return {
@@ -118,13 +87,14 @@ function lookupSource(slug: string, studies: UserStudy[], builtinTitles: Record<
   }
   const built = builtinBySlug(slug);
   if (!built) return null;
+  const directions = builtinEdits[slug] ?? [];
   return {
     slug: built.slug,
     title: displayTitle(built.slug, built.title, builtinTitles),
     category: built.category,
-    prompt: built.prompt,
+    prompt: composePrompt(built.prompt, directions),
     basePrompt: built.prompt,
-    directions: [],
+    directions,
     builtin: true,
   };
 }
@@ -132,16 +102,144 @@ function lookupSource(slug: string, studies: UserStudy[], builtinTitles: Record<
 export function StudioProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [library, setLibrary] = useState<Library>(loadLibrary);
   const [spotlightOpen, setSpotlightOpen] = useState(false);
   const [session, setSession] = useState<SpotlightSession>({ kind: "create", at: 0 });
   const [job, setJob] = useState<Job | null>(null);
+  const [deletePrompt, setDeletePrompt] = useState<{ slug: string; title: string } | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(() => (isCloudConfigured() ? "saving" : "off"));
+  const libraryRef = useRef(library);
+  const workspaceRef = useRef<string | null>(null);
+  const skipPush = useRef(true);
+  const applyingRemote = useRef(false);
+  const syncConfigured = isCloudConfigured();
+
+  libraryRef.current = library;
+
+  const commitLibrary = useCallback((patch: (current: Library) => Partial<Omit<Library, "updatedAt">>) => {
+    setLibrary((current) => touchLibrary(current, patch(current)));
+  }, []);
 
   const userStudies = library.studies;
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(library));
+    saveLibrary(library);
   }, [library]);
+
+  useEffect(() => {
+    if (!syncConfigured) return;
+
+    const fromWindow = new URLSearchParams(window.location.search).get("workspace")?.trim() ?? "";
+    const fromRouter = searchParams.get("workspace")?.trim() ?? "";
+    const incoming = isWorkspaceId(fromWindow) ? fromWindow : fromRouter;
+    const joining = isWorkspaceId(incoming);
+    if (joining) {
+      writeWorkspaceId(incoming);
+      if (searchParams.has("workspace")) {
+        const next = new URLSearchParams(searchParams);
+        next.delete("workspace");
+        setSearchParams(next, { replace: true });
+      }
+    }
+
+    const id = readWorkspaceId();
+    workspaceRef.current = id;
+    let cancelled = false;
+
+    const applyRemote = (remote: Library) => {
+      applyingRemote.current = true;
+      setLibrary(remote);
+    };
+
+    const cycle = async (preferRemote: boolean) => {
+      if (!navigator.onLine) {
+        if (!cancelled) setSyncStatus("offline");
+        return;
+      }
+      try {
+        const local = libraryRef.current;
+        const remote = await pullLibrary(id);
+        if (cancelled) return;
+        if (preferRemote && remote) {
+          applyRemote(remote);
+          setSyncStatus("saved");
+          return;
+        }
+        if (remote && remote.updatedAt > local.updatedAt) {
+          applyRemote(remote);
+          setSyncStatus("saved");
+          return;
+        }
+        if (local.updatedAt > (remote?.updatedAt ?? 0)) {
+          setSyncStatus("saving");
+          const stored = await pushLibrary(id, local);
+          if (cancelled) return;
+          if (stored.updatedAt > local.updatedAt) applyRemote(stored);
+          setSyncStatus("saved");
+          return;
+        }
+        setSyncStatus("saved");
+      } catch {
+        if (!cancelled) setSyncStatus(navigator.onLine ? "error" : "offline");
+      }
+    };
+
+    void cycle(joining).finally(() => {
+      skipPush.current = false;
+    });
+
+    const interval = window.setInterval(() => void cycle(false), PULL_EVERY_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void cycle(false);
+    };
+    const onPageHide = () => {
+      const local = libraryRef.current;
+      if (local.updatedAt > 0) void pushLibrary(id, local);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("online", onVisible);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("online", onVisible);
+    };
+    // Join from the landing URL once; later library edits debounce separately.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncConfigured]);
+
+  useEffect(() => {
+    if (!syncConfigured) return;
+    if (skipPush.current) return;
+    if (applyingRemote.current) {
+      applyingRemote.current = false;
+      return;
+    }
+    const id = workspaceRef.current;
+    if (!id || library.updatedAt <= 0) return;
+    if (!navigator.onLine) {
+      setSyncStatus("offline");
+      return;
+    }
+    setSyncStatus("saving");
+    const timer = window.setTimeout(() => {
+      const snapshot = libraryRef.current;
+      void pushLibrary(id, snapshot)
+        .then((stored) => {
+          if (stored.updatedAt > snapshot.updatedAt) {
+            applyingRemote.current = true;
+            setLibrary(stored);
+          }
+          setSyncStatus("saved");
+        })
+        .catch(() => setSyncStatus(navigator.onLine ? "error" : "offline"));
+    }, SAVE_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [library, syncConfigured]);
 
   useEffect(() => {
     if (!job?.slug) return;
@@ -184,29 +282,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   const openEdit = useCallback(
     (slug: string) => {
-      const source = lookupSource(slug, userStudies, library.builtinTitles);
-      if (!source || source.builtin) return;
-      setSession({ kind: "edit", slug: source.slug, title: source.title, prompt: source.prompt, at: Date.now() });
+      const source = lookupSource(slug, userStudies, library.builtinTitles, library.builtinEdits);
+      if (!source) return;
+      setSession({ kind: "edit", slug: source.slug, title: source.title, at: Date.now() });
       setSpotlightOpen(true);
     },
-    [library.builtinTitles, userStudies],
-  );
-
-  const openIterate = useCallback(
-    (slug: string) => {
-      const source = lookupSource(slug, userStudies, library.builtinTitles);
-      const user = userStudies.find((item) => item.slug === slug);
-      if (!source || source.builtin || !user) return;
-      setSession({
-        kind: "remix",
-        slug: user.slug,
-        title: user.title,
-        sourceTitle: user.remixOfTitle ?? user.title,
-        at: Date.now(),
-      });
-      setSpotlightOpen(true);
-    },
-    [library.builtinTitles, userStudies],
+    [library.builtinEdits, library.builtinTitles, userStudies],
   );
 
   const items = useMemo<NavItem[]>(() => {
@@ -220,12 +301,13 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         building: job?.slug === item.slug,
       }));
     const extra = userStudies.map((item) => ({
-      slug: item.slug,
-      title: item.title,
-      category: item.category,
-      building: job?.slug === item.slug,
-      remix: Boolean(item.remixOf),
-    }));
+        slug: item.slug,
+        title: item.title,
+        category: item.category,
+        building: job?.slug === item.slug,
+        remix: Boolean(item.remixOf) && !item.copied,
+        copied: Boolean(item.copied),
+      }));
     return [...built, ...extra];
   }, [job?.slug, library.builtinTitles, library.hiddenBuiltins, userStudies]);
 
@@ -249,7 +331,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           createdAt: now,
           updatedAt: now,
         };
-        setLibrary((current) => ({ ...current, studies: [...current.studies, record] }));
+        commitLibrary((current) => ({ studies: [...current.studies, record] }));
         startJob(record, BUILD_STEPS);
         closeSpotlight();
         navigate(`/${record.slug}`);
@@ -257,16 +339,24 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       }
 
       if (session.kind === "edit") {
-        const current = userStudies.find((item) => item.slug === session.slug);
-        if (!current) return;
-        const next: UserStudy = { ...current, prompt: text, basePrompt: text, directions: [], updatedAt: Date.now() };
-        setLibrary((library) => ({
-          ...library,
-          studies: library.studies.map((item) => (item.slug === next.slug ? next : item)),
-        }));
-        startJob(next, EDIT_STEPS);
+        const source = lookupSource(session.slug, userStudies, library.builtinTitles, library.builtinEdits);
+        if (!source) return;
+        const directions = [...source.directions, text];
+        const prompt = composePrompt(source.basePrompt, directions);
+        if (source.builtin) {
+          commitLibrary((current) => ({
+            builtinEdits: { ...current.builtinEdits, [source.slug]: directions },
+          }));
+        } else {
+          commitLibrary((current) => ({
+            studies: current.studies.map((item) =>
+              item.slug === source.slug ? { ...item, directions, prompt, updatedAt: Date.now() } : item,
+            ),
+          }));
+        }
+        startJob({ slug: source.slug, title: source.title, category: source.category, prompt }, EDIT_STEPS);
         closeSpotlight();
-        navigate(`/${next.slug}`);
+        navigate(`/${source.slug}`);
         return;
       }
 
@@ -279,58 +369,77 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         prompt: composePrompt(current.basePrompt, directions),
         updatedAt: Date.now(),
       };
-      setLibrary((library) => ({
-        ...library,
+      commitLibrary((library) => ({
         studies: library.studies.map((item) => (item.slug === next.slug ? next : item)),
       }));
       startJob(next, REMIX_STEPS);
       closeSpotlight();
       navigate(`/${next.slug}`);
     },
-    [closeSpotlight, navigate, session, startJob, takenSlugs, userStudies],
+    [closeSpotlight, commitLibrary, library.builtinEdits, library.builtinTitles, navigate, session, startJob, takenSlugs, userStudies],
   );
 
-  const remixStudy = useCallback(
-    (slug: string) => {
-      const source = lookupSource(slug, userStudies, library.builtinTitles);
-      if (!source) return;
+  const cloneStudy = useCallback(
+    (slug: string, mode: "remix" | "copy") => {
+      const source = lookupSource(slug, userStudies, library.builtinTitles, library.builtinEdits);
+      if (!source) return null;
       const titles = [
         ...builtins.map((item) => displayTitle(item.slug, item.title, library.builtinTitles)),
         ...userStudies.map((item) => item.title),
       ];
-      const title = remixTitle(source.title, titles);
+      const title = mode === "copy" ? copyTitle(source.title, titles) : remixTitle(source.title, titles);
+      const cloneOf = cloneSourceSlug(source.slug, userStudies) ?? (source.builtin ? source.slug : undefined);
       const record: UserStudy = {
         slug: uniqueSlug(title, takenSlugs()),
         title,
         category: source.category,
         prompt: source.prompt,
         basePrompt: source.basePrompt,
-        directions: [...source.directions],
+        directions: mode === "copy" ? [...source.directions] : [],
         remixOf: source.slug,
         remixOfTitle: source.title,
+        cloneOf,
+        copied: mode === "copy",
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
-      setLibrary((current) => ({ ...current, studies: [...current.studies, record] }));
-      setSession({ kind: "remix", slug: record.slug, title: record.title, sourceTitle: source.title, at: Date.now() });
+      commitLibrary((current) => ({ studies: [...current.studies, record] }));
+      return record;
+    },
+    [commitLibrary, library.builtinEdits, library.builtinTitles, takenSlugs, userStudies],
+  );
+
+  const remixStudy = useCallback(
+    (slug: string) => {
+      const record = cloneStudy(slug, "remix");
+      if (!record) return;
+      setSession({ kind: "remix", slug: record.slug, title: record.title, sourceTitle: record.remixOfTitle ?? record.title, at: Date.now() });
       setSpotlightOpen(true);
       navigate(`/${record.slug}`);
     },
-    [library.builtinTitles, navigate, takenSlugs, userStudies],
+    [cloneStudy, navigate],
+  );
+
+  const copyStudy = useCallback(
+    (slug: string) => {
+      const record = cloneStudy(slug, "copy");
+      if (!record) return;
+      navigate(`/${record.slug}`);
+    },
+    [cloneStudy, navigate],
   );
 
   const renameStudy = useCallback((slug: string, title: string) => {
     const next = title.trim().slice(0, 32);
     if (!next) return;
     if (builtinBySlug(slug)) {
-      setLibrary((current) => ({ ...current, builtinTitles: { ...current.builtinTitles, [slug]: next } }));
+      commitLibrary((current) => ({ builtinTitles: { ...current.builtinTitles, [slug]: next } }));
       return;
     }
-    setLibrary((current) => ({
-      ...current,
+    commitLibrary((current) => ({
       studies: current.studies.map((item) => (item.slug === slug ? { ...item, title: next, updatedAt: Date.now() } : item)),
     }));
-  }, []);
+  }, [commitLibrary]);
 
   const deleteStudy = useCallback(
     (slug: string) => {
@@ -339,19 +448,32 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       const nextSlug = fallbackSlug(slug);
 
       if (builtinBySlug(slug)) {
-        setLibrary((current) => ({
-          ...current,
+        commitLibrary((current) => ({
           hiddenBuiltins: current.hiddenBuiltins.includes(slug) ? current.hiddenBuiltins : [...current.hiddenBuiltins, slug],
+          builtinEdits: Object.fromEntries(Object.entries(current.builtinEdits).filter(([key]) => key !== slug)),
         }));
       } else {
-        setLibrary((current) => ({ ...current, studies: current.studies.filter((item) => item.slug !== slug) }));
+        commitLibrary((current) => ({ studies: current.studies.filter((item) => item.slug !== slug) }));
       }
 
       if (job?.slug === slug) setJob(null);
       if (shouldLeave) navigate(`/${nextSlug}`);
     },
-    [fallbackSlug, job?.slug, location.pathname, navigate],
+    [commitLibrary, fallbackSlug, job?.slug, location.pathname, navigate],
   );
+
+  const requestDelete = useCallback((slug: string, title: string) => {
+    setDeletePrompt({ slug, title });
+  }, []);
+
+  const closeDelete = useCallback(() => setDeletePrompt(null), []);
+
+  const confirmDelete = useCallback(() => {
+    if (!deletePrompt) return;
+    const { slug } = deletePrompt;
+    setDeletePrompt(null);
+    deleteStudy(slug);
+  }, [deletePrompt, deleteStudy]);
 
   const value = useMemo<StudioValue>(
     () => ({
@@ -362,26 +484,36 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       job,
       openCreate,
       openEdit,
-      openIterate,
       closeSpotlight,
       submitSpotlight,
       remixStudy,
+      copyStudy,
       renameStudy,
-      deleteStudy,
+      deletePrompt,
+      requestDelete,
+      closeDelete,
+      confirmDelete,
+      syncConfigured,
+      syncStatus,
     }),
     [
+      closeDelete,
       closeSpotlight,
-      deleteStudy,
+      confirmDelete,
+      copyStudy,
+      deletePrompt,
       items,
       job,
       openCreate,
       openEdit,
-      openIterate,
       remixStudy,
       renameStudy,
+      requestDelete,
       session,
       spotlightOpen,
       submitSpotlight,
+      syncConfigured,
+      syncStatus,
       userStudies,
     ],
   );

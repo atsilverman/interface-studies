@@ -4,18 +4,12 @@ export type StageDockConfig = {
   playing: boolean;
   onToggle: () => void;
   onReset: () => void;
-  speed?: number;
-  speeds?: readonly number[];
-  onSpeed?: (value: number) => void;
 };
 
 export type StageDockSnapshot = {
   playing: boolean;
-  speed?: number;
-  speeds: number[];
   onToggle: () => void;
   onReset: () => void;
-  onSpeed?: (value: number) => void;
 };
 
 type StageDockContextValue = {
@@ -46,19 +40,13 @@ export function useStageDock(config: StageDockConfig) {
   configRef.current = config;
 
   const playing = config.playing;
-  const speed = config.speed;
-  const speedsKey = config.speeds?.join(",") ?? "";
 
   useEffect(() => {
-    const current = configRef.current;
     setDock({
-      playing: current.playing,
-      speed: current.speed,
-      speeds: current.speeds ? [...current.speeds] : [],
+      playing: configRef.current.playing,
       onToggle: () => configRef.current.onToggle(),
       onReset: () => configRef.current.onReset(),
-      onSpeed: current.onSpeed ? (value: number) => configRef.current.onSpeed?.(value) : undefined,
     });
     return () => setDock(null);
-  }, [playing, speed, speedsKey, setDock]);
+  }, [playing, setDock]);
 }

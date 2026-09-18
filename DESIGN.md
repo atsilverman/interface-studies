@@ -6,7 +6,7 @@ Sampled from public computed styles on interfaces.show (Sept 2026). Original pie
 
 ## Stack
 
-React + TypeScript + Tailwind CSS v4 + Motion (`motion/react`).
+React + TypeScript + Tailwind CSS v4 + Motion (`motion/react`). Playground chrome icons: Lucide.
 
 ## Chrome
 
@@ -52,9 +52,9 @@ Import `springs` from `src/lib/tokens.ts`.
 - `springs.stamp` — threshold / unlock.
 - Linear loops only for meters, clocks, live blink.
 - No bounce-cartoon, no large layout jumps, no default 300ms ease everywhere.
-- Desktop ↔ mobile is a **morph**, not a cut or a fade of the whole card. Keep one tree. `StageCard` and `StageDock` already layout-animate. Pieces that change place (player vs clock, row vs stack) wrap in `StageMorph` with a stable `id` (`layoutId`). Do not remount the study on toggle.
+- Desktop ↔ mobile is a **morph**, not a cut or a fade of the whole card. Keep one tree. `StageCard` already layout-animates. Pieces that change place (player vs clock, row vs stack) wrap in `StageMorph` with a stable `id` (`layoutId`). Do not remount the study on toggle.
 
-Play / pause / reset and 1×–10× speed are **stage dock** controls (`useStageDock` + `StageDock`). They are not part of the study object. In-object controls use `IconButton` only when they belong to the metaphor.
+Play / pause / reset sit top-right of the stage (`useStageDock` + `StageControls`). On a narrow screen they sit in the top bar. The desktop ↔ mobile toggle sits bottom-right of the stage. They are not part of the study object. In-object controls use `IconButton` only when they belong to the metaphor. No speed chips.
 
 ## Stage dock vs the study
 
@@ -62,9 +62,9 @@ Two layers. Do not mix them.
 
 **The study** (inside `StageCard`) is the designed object — what would exist if the widget were embedded in a product, driven by real time or real data. Clock faces, progress, live/hit badges, copy, and in-metaphor controls (a keypad, a tonearm, a toggle that *is* the UI) stay here.
 
-**The stage dock** (below the card, on the white stage) is playground transport for previewing time. Play / pause, reset, 1×–10×. Register with `useStageDock` from `src/lib/stage-dock.tsx`. The dock hides when a study does not register. Draft / queued stubs do not show it.
+**Playback chrome** (next to the monitor / phone toggle) is playground transport for previewing time. Play / pause, reset. Register with `useStageDock` from `src/lib/stage-dock.tsx`. The buttons hide when a study does not register. Draft / queued stubs do not show them.
 
-Ask: *Would this control exist if the widget were live in a product, not being demoed?* If no, it belongs on the dock. Never put speed chips or transport buttons inside `StageCard`.
+Ask: *Would this control exist if the widget were live in a product, not being demoed?* If no, it belongs on the playback chrome. Never put speed chips or transport buttons inside `StageCard`.
 
 ## Composition
 
@@ -73,33 +73,39 @@ Ask: *Would this control exist if the widget were live in a product, not being d
 - Physical metaphor or a small tool — not a product page.
 - Built studies live under `src/interfaces/` and register in `src/lib/catalog.ts`.
 - The left-rail **+** / ⌘K overlay is for new briefs. It names and files a stub immediately; the real Motion study is still built in chat.
-- Row **⋯** : Remix (clone), Rename, Edit brief or Iterate, Delete. Remix preserves the original; Iterate prompts on the copy.
+- Row **⋯** : Edit (in place), Remix (clone then prompt), Copy (clone only — mounts the same builtin Component), Rename, Delete (type the study title to confirm).
 
 ## Studio chrome
 
 - Sidebar title **Interface Studies**. Subtitle: a playground for original interface design.
 - Default route `/defcon`. Only original studies in the nav.
 - Runtime overlay cycles high-level build statuses (`BUILD_STEPS` / `REMIX_STEPS` in `catalog.ts`) with a progress bar. Fake is fine.
-- Stage dock sits under the card when a study registers playback. Hidden otherwise.
-- Stage layout: auto / desktop / mobile. Monitor and phone icons on the stage toggle. Click the active explicit mode again to return to auto.
+- Stage playback sits top-right of the stage when a study registers. Hidden otherwise. Same `size-9` hit targets. Lucide `Play` / `Pause` / `RotateCcw`. Hover: play emerald, pause amber, reset red. Reset while playing restarts the clock and keeps running.
+- Library cloud save lives on the **stage**, top left — cloud icon, spinning loader while saving, brief emerald splash when the write lands. Status only; not a control. Not in the left rail.
+- Stage layout: auto / desktop / mobile. Monitor and phone icons on the stage toggle, **bottom right** of the stage. On a narrow screen play / reset sit in the top bar (where + used to be). + becomes a floating zinc-900 disc, bottom right of the page, with a zinc-100/blur ring and `shadow-heavy`. Click the active explicit mode again to return to auto.
+- Left rail library (copies, remixes, titles) can periodic-sync to free Supabase when `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set. Stage layout stays on this device. Last write wins. No realtime.
 
 ## Stage layout (desktop vs mobile)
 
 Two presentations of the same study. Same zinc, type, springs, and `StageCard`. Do not invent a second visual language for phones.
 
-**Desktop layout** is the designed composition at 440 / 560. On a small screen it **scales down** to fit the stage. Landscape studies (`fit: "landscape"` in `catalog.ts`) stay landscape. In portrait, show the rotate hint and keep the scaled desktop study until the user switches to mobile.
+**Desktop layout** is the designed composition at 440 / 560. If the stage is narrower than that, it **scales down** to fit. No CSS-rotate / “turn your phone” mode.
 
-**Mobile layout** is a rearranged composition for a narrow column: stack, larger tap targets, full-width card. Register `fit` on each builtin (`landscape` | `portrait` | `fluid`). Auto: wide screens use desktop; landscape studies on phones use scaled desktop; fluid/portrait studies on phones use mobile.
+**Mobile layout** is a rearranged composition for a narrow column: stack, larger tap targets, full-width card. Every study has both layouts in one component (`layout` + `StageMorph`). Auto: wide screens use desktop, narrow screens use mobile. The monitor / phone toggle is always available and overrides auto (including desktop-on-phone as a scaled wide card).
 
-The monitor / phone toggle overrides auto. Persist in `localStorage`. Switching interpolates shared pieces (Keynote Magic Move): card width, clock, names, bar, dock. Verify the morph in the browser, not only the settled layouts.
+The monitor / phone toggle overrides auto. Persist in `localStorage`. Switching interpolates shared pieces (Keynote Magic Move): card width, clock, names, bar. Verify the morph in the browser, not only the settled layouts.
 
 ## Deployed site
 
-The public gallery does not call an LLM from the browser. Prompt overlay files local stubs; real studies are committed in this repo. **Do not store API keys in the client**, `VITE_*` env, or localStorage. Those values are public. Keys live as `CURSOR_API_KEY` in gitignored `.env` locally and in the host env UI (Vercel / GitHub) later — never in `src/`.
+The public gallery does not call an LLM from the browser. Prompt overlay files local stubs; real studies are committed in this repo. **Do not store API secrets in the client**, `VITE_*` env, or localStorage. Those values are public. `CURSOR_API_KEY` stays server-only in gitignored `.env` and the host env UI. Supabase URL + anon key are publishable by design (RPC-by-workspace-id in `supabase/schema.sql`); they still live in env, not in `src/`.
 
-## Remix
+## Remix and edit
 
-Remix is a clone, not an overwrite. The source stays in the rail. The copy keeps the parent brief and accepts a new direction.
+Copy and Remix clone a **new nav row** that mounts the same builtin Component (independent clock / state). Copy stops there. Remix then opens the prompt. The source stays in the rail either way. A + stub has no Component yet, so Copy of a stub stays a stub.
+
+A live HTML/Vite site can remount shipped components. It cannot write a new `src/interfaces/*.tsx` into the production bundle from the browser. Edit / Remix briefs that should change the UI still need an agent (Cursor chat today; `CURSOR_API_KEY` on a server later) to commit code.
+
+Edit prompts on the same study. No new row. Built studies stay on this file until an agent rewrites them; the overlay still records the direction.
 
 Iterations stay on this file: `StageCard`, zinc, Inter / IBM Plex Serif / Geist Mono, `springs`. Do not change chrome, type, palette, or motion unless the user explicitly demands a departure in the prompt.
 

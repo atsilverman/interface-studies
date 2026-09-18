@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { motion } from "motion/react";
 import { springs } from "../lib/tokens";
+import { useStudyFrame } from "../lib/study-frame";
 import { useViewport } from "../lib/viewport";
 
 type StageCardProps = {
@@ -29,7 +30,9 @@ export function StageCard({
   children,
 }: StageCardProps) {
   const { layout } = useViewport();
+  const frame = useStudyFrame();
   const compact = layout === "mobile";
+  const heading = frame?.title ?? title;
 
   return (
     <motion.div
@@ -41,7 +44,7 @@ export function StageCard({
     >
       <div className="flex items-center justify-between px-5 pt-4 pb-3">
         <div className="flex items-baseline gap-2">
-          <h2 className="text-[15px] font-medium tracking-tight text-zinc-900">{title}</h2>
+          <h2 className="text-[15px] font-medium tracking-tight text-zinc-900">{heading}</h2>
           {meta ? <span className="text-[12.5px] tracking-tight text-zinc-400">{meta}</span> : null}
         </div>
         {badge ? (

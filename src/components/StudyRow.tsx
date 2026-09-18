@@ -8,7 +8,7 @@ type StudyRowProps = {
 };
 
 export function StudyRow({ item }: StudyRowProps) {
-  const { openEdit, openIterate, remixStudy, renameStudy, deleteStudy } = useStudio();
+  const { openEdit, remixStudy, copyStudy, renameStudy, requestDelete } = useStudio();
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(item.title);
   const [menu, setMenu] = useState<{ top: number; left: number } | null>(null);
@@ -143,9 +143,25 @@ export function StudyRow({ item }: StudyRowProps) {
             type="button"
             role="menuitem"
             className="block w-full px-3 py-1.5 text-left text-[13px] tracking-tight text-zinc-900 hover:bg-zinc-100"
+            onClick={() => run(() => openEdit(item.slug))}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="block w-full px-3 py-1.5 text-left text-[13px] tracking-tight text-zinc-900 hover:bg-zinc-100"
             onClick={() => run(() => remixStudy(item.slug))}
           >
             Remix
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="block w-full px-3 py-1.5 text-left text-[13px] tracking-tight text-zinc-900 hover:bg-zinc-100"
+            onClick={() => run(() => copyStudy(item.slug))}
+          >
+            Copy
           </button>
           <button
             type="button"
@@ -155,30 +171,11 @@ export function StudyRow({ item }: StudyRowProps) {
           >
             Rename
           </button>
-          {item.builtin ? null : item.remix ? (
-            <button
-              type="button"
-              role="menuitem"
-              className="block w-full px-3 py-1.5 text-left text-[13px] tracking-tight text-zinc-900 hover:bg-zinc-100"
-              onClick={() => run(() => openIterate(item.slug))}
-            >
-              Iterate
-            </button>
-          ) : (
-            <button
-              type="button"
-              role="menuitem"
-              className="block w-full px-3 py-1.5 text-left text-[13px] tracking-tight text-zinc-900 hover:bg-zinc-100"
-              onClick={() => run(() => openEdit(item.slug))}
-            >
-              Edit brief
-            </button>
-          )}
           <button
             type="button"
             role="menuitem"
             className="block w-full px-3 py-1.5 text-left text-[13px] tracking-tight text-zinc-500 hover:bg-zinc-100"
-            onClick={() => run(() => deleteStudy(item.slug))}
+            onClick={() => run(() => requestDelete(item.slug, item.title))}
           >
             Delete
           </button>

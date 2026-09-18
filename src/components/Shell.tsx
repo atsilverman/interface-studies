@@ -7,18 +7,20 @@ import { useStudio } from "../lib/studio";
 import { springs } from "../lib/tokens";
 import { ViewportProvider, useViewport } from "../lib/viewport";
 import { LibraryNav } from "./LibraryNav";
+import { LibrarySync } from "./LibrarySync";
 import { RuntimeStatus } from "./RuntimeStatus";
 import { Spotlight } from "./Spotlight";
+import { DeleteConfirm } from "./DeleteConfirm";
 import { StageCanvas } from "./StageCanvas";
-import { StageDock } from "./StageDock";
+import { StageControls } from "./StageControls";
 import { StageModeToggle } from "./StageModeToggle";
 
-function PlusButton({ onClick }: { onClick: () => void }) {
+function PlusButton({ onClick, className = "" }: { onClick: () => void; className?: string }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex size-10 items-center justify-center rounded-full bg-zinc-900 text-white transition-colors hover:bg-zinc-800"
+      className={`flex size-10 items-center justify-center rounded-full bg-zinc-900 text-white transition-colors hover:bg-zinc-800 ${className}`}
       aria-label="New interface"
     >
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -29,8 +31,8 @@ function PlusButton({ onClick }: { onClick: () => void }) {
 }
 
 function ShellChrome() {
-  const { spotlightOpen, openCreate, closeSpotlight } = useStudio();
-  const { narrow, showRotateHint } = useViewport();
+  const { spotlightOpen, openCreate, closeSpotlight, deletePrompt } = useStudio();
+  const { narrow } = useViewport();
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
 
@@ -41,11 +43,14 @@ function ShellChrome() {
         if (spotlightOpen) closeSpotlight();
         else openCreate();
       }
-      if (event.key === "Escape") setMenuOpen(false);
+      if (event.key === "Escape") {
+        if (deletePrompt) return;
+        setMenuOpen(false);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [closeSpotlight, openCreate, spotlightOpen]);
+  }, [closeSpotlight, deletePrompt, openCreate, spotlightOpen]);
 
   useEffect(() => {
     setMenuOpen(false);
@@ -56,6 +61,7 @@ function ShellChrome() {
   }, [narrow]);
 
   return (
+    <>
     <div className="flex min-h-dvh flex-col overflow-x-hidden bg-zinc-100 font-sans md:h-dvh md:flex-row">
       {narrow ? (
         <header className="flex items-center gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
@@ -73,7 +79,7 @@ function ShellChrome() {
           <div className="min-w-0 flex-1">
             <h1 className="truncate font-serif text-xl tracking-tighter text-zinc-900">{SITE.title}</h1>
           </div>
-          <PlusButton onClick={openCreate} />
+          <StageControls />
         </header>
       ) : (
         <aside className="flex flex-col px-8 pt-12 md:h-dvh md:w-3/12 md:min-w-[280px] md:overflow-y-auto">
@@ -88,19 +94,30 @@ function ShellChrome() {
         </aside>
       )}
 
-      <main className="relative flex min-h-0 flex-1 flex-col p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:h-dvh md:w-9/12 md:p-4">
-        <div data-stage className="relative flex min-h-[70dvh] w-full flex-1 flex-col rounded-xl bg-white md:min-h-0 md:h-full">
-          <div className="absolute top-3 right-3 z-20">
-            <StageModeToggle />
+      <main
+        className={`relative flex min-h-0 flex-1 flex-col p-3 md:h-dvh md:w-9/12 md:p-4 ${
+          narrow ? "pb-[max(5.5rem,calc(env(safe-area-inset-bottom)+4.25rem))]" : "pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+        }`}
+      >
+        <div
+          data-stage
+          className={`relative flex w-full flex-1 flex-col rounded-xl bg-white md:h-full md:min-h-0 ${
+            narrow ? "min-h-0" : "min-h-[70dvh]"
+          }`}
+        >
+          <div className="absolute top-3 left-3 z-20">
+            <LibrarySync />
           </div>
-          {showRotateHint ? (
-            <p className="pointer-events-none absolute top-14 right-3 left-3 z-10 text-center font-mono text-[10px] tracking-tight text-zinc-400 md:left-auto md:w-52 md:text-right">
-              Rotate for the full study, or switch to the mobile layout.
-            </p>
-          ) : null}
+          {narrow ? null : (
+            <div className="absolute top-3 right-3 z-20">
+              <StageControls />
+            </div>
+          )}
+          <div className="absolute right-3 bottom-3 z-20">
+            <StageModeToggle className={narrow ? "bg-zinc-200/80" : undefined} />
+          </div>
           <StageCanvas>
             <Outlet />
-            <StageDock />
           </StageCanvas>
           <RuntimeStatus />
         </div>
@@ -151,8 +168,18 @@ function ShellChrome() {
         ) : null}
       </AnimatePresence>
 
+      {narrow ? (
+        <div className="pointer-events-none fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40">
+          <div className="pointer-events-auto rounded-full bg-zinc-100/80 p-1.5 shadow-heavy backdrop-blur-md">
+            <PlusButton onClick={openCreate} className="size-12" />
+          </div>
+        </div>
+      ) : null}
+
       <Spotlight />
+      <DeleteConfirm />
     </div>
+    </>
   );
 }
 

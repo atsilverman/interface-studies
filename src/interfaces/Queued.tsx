@@ -11,7 +11,7 @@ export function Queued() {
   if (!study) return null;
 
   const waiting = Boolean(study.remixOfTitle) && study.directions.length === 0 && !building;
-  const badge = building ? "Running" : study.remixOfTitle ? "Remix" : "Draft";
+  const badge = building ? "Running" : study.copied ? "Copy" : study.remixOfTitle ? "Remix" : "Draft";
 
   return (
     <StageCard
@@ -22,10 +22,14 @@ export function Queued() {
       badgeTone={building ? "live" : "default"}
       footer={
         waiting
-          ? "Clone filed. Prompt a change — the original stays put."
-          : study.remixOfTitle
-            ? `Remix of ${study.remixOfTitle}. Stay on this design language unless you ask otherwise.`
-            : "Stub in the catalog. I’ll build the real study from this prompt."
+          ? study.copied
+            ? "Copy filed. Original is unchanged."
+            : "Clone filed. Prompt a change — the original stays put."
+          : study.copied
+            ? `Copy of ${study.remixOfTitle}. Same brief, new row.`
+            : study.remixOfTitle
+              ? `Remix of ${study.remixOfTitle}. Stay on this design language unless you ask otherwise.`
+              : "Stub in the catalog. I’ll build the real study from this prompt."
       }
     >
       <div className="px-5 py-5">
@@ -37,7 +41,13 @@ export function Queued() {
         {study.directions.map((note, index) => (
           <div key={`${index}-${note}`} className="mt-4">
             <p className="mb-2 text-[11px] tracking-[0.14em] text-zinc-400 uppercase">
-              {study.directions.length > 1 ? `Remix ${index + 1}` : "Remix"}
+              {study.copied || !study.remixOfTitle
+                ? study.directions.length > 1
+                  ? `Edit ${index + 1}`
+                  : "Edit"
+                : study.directions.length > 1
+                  ? `Remix ${index + 1}`
+                  : "Remix"}
             </p>
             <p className="text-[14px] leading-relaxed tracking-tight text-zinc-700">{note}</p>
           </div>

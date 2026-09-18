@@ -14,7 +14,7 @@ function SpotlightForm({
   session: SpotlightSession;
   onSubmit: (value: string) => void;
 }) {
-  const [value, setValue] = useState(session.kind === "edit" ? session.prompt : "");
+  const [value, setValue] = useState("");
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -24,13 +24,13 @@ function SpotlightForm({
 
   const label = session.kind === "remix" ? `Remix ${session.sourceTitle}` : session.kind === "edit" ? `Edit ${session.title}` : "New interface";
   const placeholder =
-    session.kind === "remix" ? "What should change…" : session.kind === "edit" ? "Update the brief…" : "Describe an interface…";
-  const action = session.kind === "remix" ? "Remix" : session.kind === "edit" ? "Save" : "Run";
+    session.kind === "remix" ? "What should change…" : session.kind === "edit" ? "What should change…" : "Describe an interface…";
+  const action = session.kind === "remix" ? "Remix" : session.kind === "edit" ? "Edit" : "Run";
   const hint =
     session.kind === "remix"
       ? "Original stays. Keep this design language unless you ask otherwise."
       : session.kind === "edit"
-        ? "Updates this study in place."
+        ? "Updates this study. Remix if you want a copy."
         : "⌘K";
 
   const submit = () => {
@@ -52,7 +52,7 @@ function SpotlightForm({
         submit();
       }}
     >
-      {session.kind === "remix" ? (
+      {session.kind === "remix" || session.kind === "edit" ? (
         <p className="px-5 pt-4 text-[11px] tracking-[0.14em] text-zinc-400 uppercase">{label}</p>
       ) : null}
       <input
@@ -67,7 +67,7 @@ function SpotlightForm({
         }}
         placeholder={placeholder}
         className={`w-full border-0 bg-transparent px-5 text-[17px] tracking-tight text-zinc-900 outline-none placeholder:text-zinc-400 ${
-          session.kind === "remix" ? "pt-2 pb-4" : "py-4"
+          session.kind === "remix" || session.kind === "edit" ? "pt-2 pb-4" : "py-4"
         }`}
       />
       <div className="flex items-center justify-between gap-3 border-t border-zinc-100 px-5 py-2.5">

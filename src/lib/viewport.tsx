@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
-import { builtinBySlug } from "./catalog";
+import { builtinForSlug } from "./catalog";
 import { breakpoints, card } from "./tokens";
+import { useStudio } from "./studio";
 
 export type StageMode = "auto" | "desktop" | "mobile";
 export type StudyFit = "landscape" | "portrait" | "fluid";
@@ -13,10 +14,8 @@ type ViewportValue = {
   fit: StudyFit;
   frameWidth: number;
   narrow: boolean;
-  portrait: boolean;
   width: number;
   height: number;
-  showRotateHint: boolean;
   setMode: (mode: StageMode) => void;
 };
 
@@ -37,17 +36,16 @@ function readSize() {
   return { width: window.innerWidth, height: window.innerHeight };
 }
 
-function resolveLayout(mode: StageMode, fit: StudyFit, width: number): StageLayout {
+function resolveLayout(mode: StageMode, width: number): StageLayout {
   if (mode === "desktop") return "desktop";
   if (mode === "mobile") return "mobile";
-  if (width >= breakpoints.narrow) return "desktop";
-  if (fit === "landscape") return "desktop";
-  return "mobile";
+  return width >= breakpoints.narrow ? "desktop" : "mobile";
 }
 
 export function ViewportProvider({ children }: { children: ReactNode }) {
   const { slug } = useParams();
-  const built = slug ? builtinBySlug(slug) : undefined;
+  const { userStudies } = useStudio();
+  const built = builtinForSlug(slug, userStudies);
   const fit: StudyFit = built && "fit" in built ? built.fit : "fluid";
   const frameWidth = built && "frame" in built && built.frame === "wide" ? card.wide : card.width;
 
@@ -74,9 +72,7 @@ export function ViewportProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const narrow = size.width < breakpoints.narrow;
-  const portrait = size.height >= size.width;
-  const layout = resolveLayout(mode, fit, size.width);
-  const showRotateHint = layout === "desktop" && fit === "landscape" && narrow && portrait;
+  const layout = resolveLayout(mode, size.width);
 
   const value = useMemo<ViewportValue>(
     () => ({
@@ -85,13 +81,11 @@ export function ViewportProvider({ children }: { children: ReactNode }) {
       fit,
       frameWidth,
       narrow,
-      portrait,
       width: size.width,
       height: size.height,
-      showRotateHint,
       setMode,
     }),
-    [fit, frameWidth, layout, mode, narrow, portrait, setMode, showRotateHint, size.height, size.width],
+    [fit, frameWidth, layout, mode, narrow, setMode, size.height, size.width],
   );
 
   return <ViewportContext.Provider value={value}>{children}</ViewportContext.Provider>;

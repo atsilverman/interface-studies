@@ -29,6 +29,8 @@ export type UserStudy = {
   directions: string[];
   remixOf?: string;
   remixOfTitle?: string;
+  cloneOf?: string;
+  copied?: boolean;
   createdAt: number;
   updatedAt: number;
 };
@@ -40,6 +42,7 @@ export type NavItem = {
   building?: boolean;
   builtin?: boolean;
   remix?: boolean;
+  copied?: boolean;
 };
 
 export type SourceStudy = {
@@ -80,6 +83,15 @@ export function uniqueSlug(base: string, taken: string[]) {
   let n = 2;
   while (taken.includes(`${root}-${n}`)) n += 1;
   return `${root}-${n}`;
+}
+
+export function copyTitle(source: string, existingTitles: string[]) {
+  const root = source.replace(/ copy(?: \d+)?$/i, "").trim() || source;
+  const base = `${root} copy`;
+  if (!existingTitles.includes(base)) return base;
+  let n = 2;
+  while (existingTitles.includes(`${root} copy ${n}`)) n += 1;
+  return `${root} copy ${n}`;
 }
 
 export function remixTitle(source: string, existingTitles: string[]) {
@@ -126,6 +138,24 @@ export function deriveStudy(prompt: string, taken: string[]) {
 
 export function builtinBySlug(slug: string) {
   return builtins.find((item) => item.slug === slug);
+}
+
+/** Walk copy/remix parents until a builtin whose Component can be mounted. */
+export function cloneSourceSlug(slug: string, studies: UserStudy[], seen = new Set<string>()): string | undefined {
+  if (!slug || seen.has(slug)) return undefined;
+  seen.add(slug);
+  if (builtinBySlug(slug)) return slug;
+  const user = studies.find((item) => item.slug === slug);
+  if (!user) return undefined;
+  if (user.cloneOf && builtinBySlug(user.cloneOf)) return user.cloneOf;
+  if (user.remixOf) return cloneSourceSlug(user.remixOf, studies, seen);
+  return undefined;
+}
+
+export function builtinForSlug(slug: string | undefined, studies: UserStudy[]) {
+  if (!slug) return undefined;
+  const source = cloneSourceSlug(slug, studies);
+  return source ? builtinBySlug(source) : undefined;
 }
 
 export const BUILD_STEPS = [
