@@ -21,7 +21,7 @@ Must:
 - Dummy data local. Original physical metaphor or small tool — not a product page.
 
 StageCard props: title, meta?, badge?, badgeTone?: "default"|"live"|"hit", footer?, wide?, children.
-Inner well padding: px-5 pt-4 pb-4 (px-4 on compact). Card is already rounded-[28px] bg-zinc-100 shadow-heavy.
+Inner well padding: px-5 pt-4 pb-4 (px-4 on compact). StageCard already draws the 28px zinc shell and concentric white well (inner radius = outer − inset). If you nest another rounded rectangle inside a rounded parent with a uniform gutter, import nestedRadius from "../lib/tokens" and use inner = outer − inset. Do not pick rounded-2xl by habit. Pills stay rounded-full.
 
 Allowed imports only:
 - react

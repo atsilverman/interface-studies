@@ -12,7 +12,7 @@ This repo is a prompt-first gallery of **original** interactive UI studies. Matc
 ## How to add a study
 
 1. Read `DESIGN.md`.
-2. Create `src/interfaces/PascalName.tsx` using `StageCard` and `springs` from `src/lib/tokens.ts`.
+2. Create `src/interfaces/PascalName.tsx` using `StageCard` and `springs` from `src/lib/tokens.ts`. Nested rounded rectangles that sit inside another rounded surface with a uniform gutter use `nestedRadius(outer, inset)` (inner = outer − inset). `StageCard` already does this for the white well. Do not guess `rounded-xl` / `rounded-2xl` for those nested shells.
 3. Register it in `src/lib/catalog.ts` (`builtins`), including `fit` (`landscape` | `portrait` | `fluid`) and `frame` (`wide` | default). If it already exists as a Spotlight stub, replace the stub with the real component.
 4. Keep dummy data local. Time / preview transport (play, pause, reset) registers through `useStageDock` — never inside `StageCard`. In-object interaction stays in the study.
 5. Verify in the browser (navigate, click, play from the stage chrome). Check Live / Hit / type / card chrome against `DESIGN.md`. Confirm play / reset are absent on drafts. Check **desktop and mobile** layouts (stage toggle) and the morph between them. Pieces that move wrap in `StageMorph`.

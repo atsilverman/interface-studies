@@ -12,7 +12,8 @@ React + TypeScript + Tailwind CSS v4 + Motion (`motion/react`). Playground chrom
 
 - Page: `bg-zinc-100` `#f4f4f5`. Stage: white `rounded-xl`.
 - Widget: `StageCard`. Default `w-[440px]`. Agent / data tools may use `wide` (`w-[560px]`). On the mobile layout, the card is `w-full` up to 400px.
-- Card: `rounded-[28px] bg-zinc-100 shadow-heavy`. Inner well: `rounded-2xl bg-white`.
+- Card: `card.radius` 28px, `bg-zinc-100 shadow-heavy`. Inner well: white, inset `card.inset` 10px (8px compact).
+- Nested rounds are **concentric**: `nestedRadius(outer, inset)` → `max(0, outer − inset)`. The white well is 18px (20px compact), not `rounded-2xl` / 16px. A too-small inner radius makes the grey gutter thicker at the corner than along the edges. `StageCard` already applies this. If a study nests another rounded rectangle inside a rounded parent with a uniform gutter, use the same formula — do not pick `rounded-xl` / `rounded-2xl` by habit. Pills (`rounded-full`) are exempt.
 - Header: 15px medium title, 12.5px `text-zinc-400` meta, 10px pill badge.
 - Footer: 11px `text-zinc-400`, one quiet line.
 - Padding in the well: `px-5 pt-4 pb-4`.

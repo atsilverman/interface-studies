@@ -102,6 +102,7 @@ export function Defcon() {
   }, [actions]);
   const count = actions.length;
   const last = actions.at(-1);
+  const fullTime = minute >= MATCH_END;
   const achieved = count >= THRESHOLD;
   const fill = Math.min(1, count / THRESHOLD);
   const canReveal = minute > 0 && count > 0;
@@ -262,8 +263,8 @@ export function Defcon() {
     >
     <StageCard
       wide
-      title="Defcon"
-      meta="CB · 10"
+      title="DefCon"
+      meta="GW3"
       badge={
         running ? (
           <>
@@ -277,8 +278,8 @@ export function Defcon() {
       <div className={compact ? "px-4 pt-4 pb-4" : "px-5 pt-4 pb-4"}>
         <div className="mb-4 flex items-start justify-between gap-3">
           <StageMorph id={`${morph}-player`} className="min-w-0">
-            <p className="text-[15px] font-medium tracking-tight text-zinc-900">William Saliba</p>
-            <p className="text-[12px] tracking-tight text-zinc-400">Arsenal · vs Brighton</p>
+            <p className="text-[15px] font-medium tracking-tight text-zinc-900">Levi Colwill</p>
+            <p className="text-[12px] tracking-tight text-zinc-400">Chelsea · vs Brentford</p>
           </StageMorph>
           <StageMorph id={`${morph}-clock`} className="shrink-0 text-right">
             <p className="font-mono text-[18px] tracking-tighter text-zinc-900 tabular-nums">
@@ -304,7 +305,7 @@ export function Defcon() {
             <span className="font-mono text-[13px] text-zinc-400">/ {THRESHOLD}</span>
           </div>
           <AnimatePresence mode="wait">
-            {last ? (
+            {last && !fullTime ? (
               <motion.span
                 key={`${last.m}-${last.kind}`}
                 initial={{ opacity: 0, x: 8 }}
@@ -313,13 +314,13 @@ export function Defcon() {
                 transition={springs.snappy}
                 className={`rounded-full px-2 py-0.5 font-mono text-[10px] tracking-tight ${KINDS[last.kind].chip}`}
               >
-                {Math.floor(last.m)}' · {compact ? last.kind : KINDS[last.kind].label}
+                {Math.floor(last.m)}' · {KINDS[last.kind].label}
               </motion.span>
-            ) : (
+            ) : !fullTime ? (
               <span className="max-w-[9.5rem] text-right text-[11px] tracking-tight text-zinc-400">
                 Waiting first action
               </span>
-            )}
+            ) : null}
           </AnimatePresence>
         </div>
 
@@ -385,7 +386,7 @@ export function Defcon() {
                         className="inline-flex items-center gap-1.5 text-[11px] tracking-tight text-zinc-500"
                       >
                         <span className={`size-1.5 rounded-full ${KINDS[kind].swatch}`} />
-                        {compact ? kind : KINDS[kind].label}
+                        {KINDS[kind].label}
                       </span>
                     ))}
                   </div>
@@ -402,18 +403,14 @@ export function Defcon() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               transition={springs.stamp}
-              className="mb-4 flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-2 text-[12px] tracking-tight text-emerald-800"
+              className="flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-2 text-[12px] tracking-tight text-emerald-800"
             >
-              DEFCON achieved
+              DefCon achieved
               <span aria-hidden="true" className="size-1.5 rounded-full bg-emerald-500" />
               <span className="font-mono tracking-tight tabular-nums">+2pts</span>
             </motion.p>
           ) : null}
         </AnimatePresence>
-
-        {minute >= MATCH_END ? (
-          <p className="text-[12px] tracking-tight text-zinc-400">Full time</p>
-        ) : null}
       </div>
     </StageCard>
     </motion.div>

@@ -19,7 +19,20 @@ export const card = {
   width: 440,
   wide: 560,
   radius: 28,
+  /** Grey gutter between the 28px shell and the white well. */
+  inset: 10,
+  insetCompact: 8,
 };
+
+/**
+ * Concentric nested corners: the inner radius must shrink by the gutter
+ * so the band between two rounds stays even (r_inner = r_outer − inset).
+ * A smaller inner radius (e.g. rounded-2xl / 16 inside 28 with 10px pad)
+ * makes the grey thicker at the corner than along the edges.
+ */
+export function nestedRadius(outer: number, inset: number) {
+  return Math.max(0, outer - inset);
+}
 
 export const breakpoints = {
   narrow: 768,
